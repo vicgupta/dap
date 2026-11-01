@@ -18,6 +18,7 @@ import (
 	"github.com/vicgupta/dap/internal/desktop"
 	"github.com/vicgupta/dap/internal/model"
 	"github.com/vicgupta/dap/internal/runinfo"
+	"github.com/vicgupta/dap/internal/version"
 )
 
 // Options wires the process streams. Tests pass their own.
@@ -49,6 +50,8 @@ func Run(args []string, opt Options) int {
 		code   = 0
 	)
 	switch rest[0] {
+	case "version", "--version", "-v":
+		result = map[string]any{"ok": true, "version": version.Display(), "core": version.Version}
 	case "init":
 		result, err = cmdInit(data)
 	case "serve":
@@ -100,6 +103,7 @@ func Run(args []string, opt Options) int {
 
 const usage = `da — Dashboard Agent Platform
 
+  da version
   da init
   da serve [--addr host:port]
   da run [--addr host:port]

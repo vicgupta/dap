@@ -11,6 +11,7 @@ Core version: `0.1.0` (`internal/version`). Go `1.22` or newer.
 | [docs/plugins.md](docs/plugins.md) | `plugin.yaml`, the five-step interface, authoring in any language |
 | [docs/runtime.md](docs/runtime.md) | Scheduler, inbox, guardrails, ledger, secrets, doctor, data directory, limitations |
 | [docs/inbox-followups.md](docs/inbox-followups.md) | Follow-ups watcher, Connections, Gmail and Outlook sign-in |
+| [docs/release.md](docs/release.md) | macOS test builds, Gatekeeper, and how tags are packaged |
 
 ## Run
 

@@ -3,10 +3,23 @@ package version
 
 const (
 	// Version is the core release. Plugin manifests declare the minimum they need.
+	// Release tags such as v0.1.0-alpha.1 stay in Release so semver checks keep working.
 	Version = "0.1.0"
 	// InterfaceV1 is the first frozen plugin contract.
 	InterfaceV1 = "dap.plugin.v1"
 )
+
+// Release is the build label, set with -ldflags "-X github.com/vicgupta/dap/internal/version.Release=v0.1.0-alpha.1".
+// Empty means a local build of Version.
+var Release = ""
+
+// Display is what `da version` prints.
+func Display() string {
+	if Release != "" {
+		return Release
+	}
+	return Version
+}
 
 // SupportedInterfaces lists contracts this core can host.
 // Older entries stay here so an older plugin keeps loading.

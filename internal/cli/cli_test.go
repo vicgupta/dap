@@ -49,6 +49,15 @@ func TestInitInstallListCheck(t *testing.T) {
 	}
 }
 
+func TestVersion(t *testing.T) {
+	for _, args := range [][]string{{"version"}, {"--version"}, {"-v"}} {
+		code, out, errOut := run(t, t.TempDir(), args...)
+		if code != 0 || !strings.Contains(out, `"version"`) || errOut != "" {
+			t.Fatalf("%v code %d out %s err %s", args, code, out, errOut)
+		}
+	}
+}
+
 func run(t *testing.T, dir string, args ...string) (int, string, string) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer

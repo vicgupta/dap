@@ -2,6 +2,18 @@
 
 `da` is the only binary. Every successful command writes indented JSON to stdout. Failures write `{"ok":false,"error":"..."}` to stderr and exit `1`, except an unknown command, which exits `2`. `da`, `da help`, `da --help`, and `da -h` print usage and exit `0`.
 
+## `da version`
+
+`da version`, `da --version`, and `da -v` print the build label. A release tag is injected with `-ldflags` into `version.Release`. A local build prints the core version `0.1.0`.
+
+```bash
+da version
+```
+
+```json
+{ "ok": true, "version": "0.1.0", "core": "0.1.0" }
+```
+
 Global flag, anywhere in the arguments:
 
 ```text
