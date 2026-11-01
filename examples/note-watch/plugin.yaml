@@ -1,0 +1,13 @@
+name: note-watch
+version: 0.1.0
+min_dap_version: 0.1.0
+type: watcher
+interface: dap.plugin.v1
+description: Notice a local note and ask before recording it. Nothing is sent.
+entrypoint: plugin.py
+permissions:
+  - name: note.watch
+    mode: ask_first
+    description: Record a local result for note-watch
+schedule:
+  every: 1h

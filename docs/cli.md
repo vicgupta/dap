@@ -94,6 +94,9 @@ da plugin install [--approve] <path>
 da plugin list
 da plugin remove <name>
 da plugin approve <name>
+da plugin new <name> [--type watcher|capability|workflow] [--lang python|go|node] [--ui] [--dir path]
+da plugin validate <path>
+da plugin dev <path>
 ```
 
 `install` reads `<path>/plugin.yaml`. Without `--approve` it validates and returns the permissions. Nothing is written.
@@ -116,6 +119,42 @@ da plugin approve <name>
 `remove` stops the process, drops it from the registry, and leaves the ledger and old cards in place.
 
 `approve` accepts the current manifest's permission list and starts the plugin. Use it after you edit `plugin.yaml` to add a permission or change a mode from `ask_first` to `allowed`. A tighter mode does not need a new approval.
+
+## `da plugin new`
+
+Writes a plugin that already passes `da plugin validate`.
+
+```text
+da plugin new <name> [--type watcher|capability|workflow] [--lang python|go|node] [--ui] [--dir path] [--description text]
+```
+
+`--type` defaults to `watcher`. `--lang` defaults to `python`. The directory defaults to `./<name>` and must be empty or missing. The skeleton contains `plugin.yaml`, a protocol loop, `AGENTS.md`, `CLAUDE.md`, and a small test. `--ui` adds a page that reads `?theme=` before paint.
+
+```bash
+da plugin new note-watch --type watcher --lang python
+```
+
+```json
+{"ok": true, "path": "/home/you/note-watch", "name": "note-watch", "type": "watcher", "lang": "python"}
+```
+
+## `da plugin validate`
+
+Checks [schemas/plugin.schema.json](../schemas/plugin.schema.json), then the manifest rules, then starts the process and calls `initialize`, `watch`, `propose`, `act`, `report`, and an unknown method. The API base in that run is a dummy address, so those methods must return a valid result when the host cannot be reached.
+
+```bash
+da plugin validate ./note-watch
+```
+
+Stdout is one JSON object with `ok` and `checks`. Each check has `name`, `ok`, and `detail`. Exit code `1` when `ok` is false. The report is still on stdout so an agent can fix the named check.
+
+## `da plugin dev`
+
+Runs one plugin in the foreground and restarts it when a file in the directory changes. Output is one JSON object per line (`ready`, `stderr`, `reload`, `error`, `stop`). Ctrl+C stops it. It does not take the data-directory lock.
+
+```bash
+da plugin dev ./note-watch
+```
 
 ## `da context`
 

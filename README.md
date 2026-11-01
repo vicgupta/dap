@@ -10,7 +10,9 @@ Core version: `0.1.0` (`internal/version`). Go `1.22` or newer.
 | --- | --- |
 | [docs/architecture.md](docs/architecture.md) | Process model, window, tokens, scoped API |
 | [docs/cli.md](docs/cli.md) | Every `da` command, flag, exit code, and example |
+| [docs/plugin-authoring.md](docs/plugin-authoring.md) | Write a plugin, or point a coding agent at it |
 | [docs/plugins.md](docs/plugins.md) | `plugin.yaml`, the five-step interface, authoring in any language |
+| [AGENTS.md](AGENTS.md) | Rules for a coding agent working in this repo |
 | [docs/runtime.md](docs/runtime.md) | Scheduler, inbox, guardrails, ledger, secrets, doctor, data directory, limitations |
 
 ## Run
@@ -71,6 +73,7 @@ A plugin with a `ui` block is served on its own `127.0.0.1` port. The core route
 - **Activity.** The ledger, newest first.
 - **Guardrails.** The baked-in rules, each permission's effective mode, and recent checks. A control can tighten a permission. It cannot loosen one.
 - **Plugins.** Review permissions in plain language, approve the install, see health, open a plugin UI, or remove a plugin.
+- **Create plugin.** Describe the job in plain words, pick a type and a coding agent that is already on `PATH` (Claude Code, Codex, or OpenCode). DAP scaffolds a draft, runs that agent with your login, validates, and puts a change card in the inbox. The plugin is installed only after you approve the card.
 
 ## Safety rules
 

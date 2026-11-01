@@ -44,6 +44,9 @@ The admin API used by the UI and the CLI, all under the admin token:
 | POST | `/api/plugins/install` with `path` and `approve` |
 | POST | `/api/plugins/{name}/remove`, `approve`, `run` |
 | POST | `/api/propose`, `/api/check`, `/api/log`, `/api/outcome`, `/api/tile` |
+| POST | `/api/create/scaffold`, `/api/create/run`, `/api/create/validate`, `/api/create/propose` |
+| GET | `/api/create/run/{id}` |
+| POST | `/api/create/run/{id}/cancel` |
 | GET | `/plugins/{name}/` redirects to that plugin's loopback origin |
 
 Plugin API routes (suffixes of `api_base`, which is `http://127.0.0.1:<port>/v1/<plugin>`):

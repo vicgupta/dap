@@ -114,6 +114,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/plugins/{name}/remove", s.auth(s.remove))
 	mux.HandleFunc("POST /api/plugins/{name}/approve", s.auth(s.approveManifest))
 	mux.HandleFunc("POST /api/plugins/{name}/run", s.auth(s.run))
+	mux.HandleFunc("POST /api/create/scaffold", s.auth(s.createScaffold))
+	mux.HandleFunc("POST /api/create/run", s.auth(s.createRun))
+	mux.HandleFunc("GET /api/create/run/{id}", s.auth(s.createRunGet))
+	mux.HandleFunc("POST /api/create/run/{id}/cancel", s.auth(s.createRunCancel))
+	mux.HandleFunc("POST /api/create/validate", s.auth(s.createValidate))
+	mux.HandleFunc("POST /api/create/propose", s.auth(s.createPropose))
 	mux.HandleFunc("GET /api/doctor", s.auth(s.doctor))
 	mux.HandleFunc("GET /api/approved", s.auth(s.approved))
 	mux.HandleFunc("GET /api/context", s.auth(s.context))
@@ -327,6 +333,85 @@ func (s *Server) run(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) createScaffold(w http.ResponseWriter, r *http.Request) {
+	var req core.DraftRequest
+	if err := readJSON(r, &req); err != nil {
+		writeErr(w, err)
+		return
+	}
+	res, err := s.App.ScaffoldDraft(req)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+func (s *Server) createRun(w http.ResponseWriter, r *http.Request) {
+	var req core.AgentStart
+	if err := readJSON(r, &req); err != nil {
+		writeErr(w, err)
+		return
+	}
+	res, err := s.App.StartAgent(req)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+func (s *Server) createRunGet(w http.ResponseWriter, r *http.Request) {
+	res, err := s.App.AgentRun(r.PathValue("id"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+func (s *Server) createRunCancel(w http.ResponseWriter, r *http.Request) {
+	if err := s.App.CancelAgent(r.PathValue("id")); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) createValidate(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Path   string `json:"path"`
+		Plugin string `json:"plugin"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeErr(w, err)
+		return
+	}
+	rep, err := s.App.ValidateDraft(req.Path, req.Plugin)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rep)
+}
+
+func (s *Server) createPropose(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Path   string `json:"path"`
+		Plugin string `json:"plugin"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeErr(w, err)
+		return
+	}
+	card, err := s.App.ProposePluginChange(req.Path, req.Plugin)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "card": card})
 }
 
 func (s *Server) doctor(w http.ResponseWriter, r *http.Request) {

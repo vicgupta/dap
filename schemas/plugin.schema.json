@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dap.dev/schemas/plugin.schema.json",
+  "title": "DAP plugin.yaml",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "version", "min_dap_version", "type", "entrypoint"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,63}$",
+      "description": "Lowercase letters, digits, and hyphens. Must start with a letter."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "MAJOR.MINOR.PATCH with no pre-release tag."
+    },
+    "min_dap_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "Oldest DAP core that can load this plugin. This core is 0.1.0."
+    },
+    "type": {
+      "enum": ["watcher", "capability", "workflow"]
+    },
+    "interface": {
+      "const": "dap.plugin.v1"
+    },
+    "description": {
+      "type": "string"
+    },
+    "entrypoint": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      ]
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "type": "string", "minLength": 1 },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$" },
+              "version": { "type": "string" }
+            }
+          }
+        ]
+      }
+    },
+    "permissions": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "mode"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9]*)+$"
+              },
+              "mode": {
+                "enum": ["allowed", "ask_first", "ask first", "ask-first"]
+              },
+              "description": { "type": "string" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      ]
+    },
+    "provides": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "config": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "type"],
+        "properties": {
+          "key": { "type": "string", "minLength": 1 },
+          "type": { "enum": ["string", "number", "bool", "duration", "list"] },
+          "description": { "type": "string" },
+          "required": { "type": "boolean" },
+          "default": {}
+        }
+      }
+    },
+    "schedule": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "every": { "type": "string" },
+            "cron": { "type": "string" },
+            "at": { "type": "string" },
+            "recurrence": { "enum": ["daily", "weekdays", "weekly"] },
+            "day": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entry"],
+      "properties": {
+        "entry": { "type": "string", "minLength": 1 },
+        "route": { "type": "string" },
+        "title": { "type": "string" }
+      }
+    }
+  }
+}

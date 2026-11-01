@@ -2,6 +2,8 @@
 
 A plugin is a directory with `plugin.yaml` and an entrypoint. `da plugin install` records that directory's absolute path. It does not copy the files. Rebuild `da` only when the core changes.
 
+To write one, follow [plugin-authoring.md](plugin-authoring.md). The schema is [schemas/plugin.schema.json](../schemas/plugin.schema.json). `da plugin validate <path>` checks it.
+
 The shipped examples are `plugins/hello-watch` (a watcher) and `plugins/workflow` (a workflow with a step editor). Both are Python 3 so the protocol is not tied to Go. A Go, JavaScript, or Rust plugin uses the same stdin and stdout messages.
 
 ## `plugin.yaml`

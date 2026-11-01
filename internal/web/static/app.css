@@ -302,3 +302,58 @@ select {
   .grid, .policy, .activity li { grid-template-columns: 1fr; }
   .main { padding: 20px 16px 48px; }
 }
+
+.type-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.type-choice { display: flex; flex-direction: column; align-items: flex-start; text-align: left; min-width: 180px; }
+.type-choice.selected, button.ghost.selected { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.16); }
+.create-log {
+  margin: 12px 0 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 12px;
+  background: #fafafb;
+  border: 1px solid var(--line);
+  font: 12.5px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+}
+.checks .pass { color: var(--good); }
+.checks .fail { color: var(--danger); }
+label.inline { flex-direction: row; align-items: center; }
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #101218;
+  --surface: #1a1d27;
+  --ink: #f2f4f8;
+  --muted: #c5cbd8;
+  --faint: #a8b0c2;
+  --line: #2c3142;
+  --line-strong: #414862;
+  --accent-soft: #2a2754;
+  --accent-ink: #c7d2fe;
+  --good: #6ee7b7;
+  --good-bg: #064e3b;
+  --warn: #fdba74;
+  --warn-bg: #3b2414;
+  --ask: #ddd6fe;
+  --ask-bg: #2e1065;
+  --danger: #fca5a5;
+  --danger-bg: #3f1212;
+}
+html[data-theme="dark"] .nav a,
+html[data-theme="dark"] .summary,
+html[data-theme="dark"] .policy p,
+html[data-theme="dark"] .tile-line,
+html[data-theme="dark"] .kind { color: var(--ink); }
+html[data-theme="dark"] button.ghost,
+html[data-theme="dark"] input,
+html[data-theme="dark"] textarea,
+html[data-theme="dark"] select,
+html[data-theme="dark"] .create-log,
+html[data-theme="dark"] .tile,
+html[data-theme="dark"] .body,
+html[data-theme="dark"] kbd { background: #12141c; color: var(--ink); }
+html[data-theme="dark"] .pill { background: #262a38; color: #e6e9f2; }
+html[data-theme="dark"] .sidebar,
+html[data-theme="dark"] .card { background: var(--surface); color: var(--ink); }

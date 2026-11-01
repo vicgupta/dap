@@ -43,6 +43,7 @@ type App struct {
 	apiSrv     *http.Server
 	apiBase    string
 	adminToken string
+	agentJobs  *sync.Map
 }
 
 type runtime struct {
