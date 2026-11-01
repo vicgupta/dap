@@ -43,6 +43,14 @@ ui:
 	if m.Schedule.Every != "2h" {
 		t.Fatal(m.Schedule)
 	}
+	rawTile := raw + "tile:\n  size: large\n  min: medium\n"
+	mt, err := Parse([]byte(rawTile), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mt.Tile == nil || mt.Tile.Size != "large" || mt.Tile.Min != "medium" {
+		t.Fatalf("tile %+v", mt.Tile)
+	}
 	if len(m.Dependencies) != 2 || m.Dependencies[0].Version != "^0.3" {
 		t.Fatalf("deps %+v", m.Dependencies)
 	}
@@ -82,17 +90,19 @@ permissions:
 `
 	}
 	cases := map[string]string{
-		"bad version":   strings.Replace(base(), "version: 0.1.0", "version: beta", 1),
-		"bad type":      strings.Replace(base(), "type: watcher", "type: robot", 1),
-		"bad mode":      strings.Replace(base(), "mode: ask_first", "mode: sometimes", 1),
-		"bad range":     base() + "dependencies:\n  - other >>>1\n",
-		"dup perm":      strings.Replace(base(), "demo.greet", "demo.greet", 1) + "  - name: demo.greet\n    mode: allowed\n",
-		"future dap":    strings.Replace(base(), "min_dap_version: 0.1.0", "min_dap_version: 99.0.0", 1),
-		"bad name":      strings.Replace(base(), "name: hello-watch", "name: Hello", 1),
-		"two schedules": base() + "schedule:\n  every: 1h\n  cron: \"0 * * * *\"\n",
-		"short every":   base() + "schedule:\n  every: 1s\n",
-		"bad cron":      base() + "schedule:\n  cron: \"nope\"\n",
-		"escape entry":  strings.Replace(base(), "entrypoint: hello.py", "entrypoint: ../hello.py", 1),
+		"bad version":    strings.Replace(base(), "version: 0.1.0", "version: beta", 1),
+		"bad type":       strings.Replace(base(), "type: watcher", "type: robot", 1),
+		"bad mode":       strings.Replace(base(), "mode: ask_first", "mode: sometimes", 1),
+		"bad range":      base() + "dependencies:\n  - other >>>1\n",
+		"dup perm":       strings.Replace(base(), "demo.greet", "demo.greet", 1) + "  - name: demo.greet\n    mode: allowed\n",
+		"future dap":     strings.Replace(base(), "min_dap_version: 0.1.0", "min_dap_version: 99.0.0", 1),
+		"bad name":       strings.Replace(base(), "name: hello-watch", "name: Hello", 1),
+		"two schedules":  base() + "schedule:\n  every: 1h\n  cron: \"0 * * * *\"\n",
+		"short every":    base() + "schedule:\n  every: 1s\n",
+		"bad cron":       base() + "schedule:\n  cron: \"nope\"\n",
+		"escape entry":   strings.Replace(base(), "entrypoint: hello.py", "entrypoint: ../hello.py", 1),
+		"bad tile":       base() + "tile:\n  size: huge\n",
+		"tile below min": base() + "tile:\n  size: small\n  min: large\n",
 	}
 	for name, raw := range cases {
 		t.Run(name, func(t *testing.T) {

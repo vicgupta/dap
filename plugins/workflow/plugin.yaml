@@ -41,6 +41,8 @@ config:
         effects: []
 schedule:
   every: 1h
+tile:
+  size: medium
 ui:
   entry: ui/index.html
   route: /plugins/workflow/

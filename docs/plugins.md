@@ -112,9 +112,25 @@ Keys are unique and cannot contain spaces. Types:
 
 Unknown keys in a stored config or a change card are rejected. Defaults are copied at install. `required: true` without a default fails install when the value is missing.
 
+### Tile size
+
+Optional. This is the Home dashboard tile, not the plugin's own page.
+
+```yaml
+tile:
+  size: medium    # small | medium | large. Default medium.
+  min: small      # smallest size the Home control may use. Default small.
+```
+
+`size` is the span until the person picks another. `min` is a floor: a plugin that needs room can set `min: medium` and Home will not offer small. `size` cannot be smaller than `min`. On the grid, small is one third of the row, medium is half, and large is the full row. List and board keep the card readable; the span applies when Home is in the grid.
+
+`hello-watch` asks for small. `workflow` stays medium. `inbox-followups` asks for large and will not go below medium.
+
 ### UI
 
 `entry` is a file inside the plugin directory. `..` is rejected. `route` must start with `/plugins/`. It defaults to `/plugins/<name>/`. `title` defaults to the plugin name. The core serves the entry file's directory on a private loopback port. See [architecture.md](architecture.md).
+
+Plugin pages do not share the core origin, so they cannot read the core page's `localStorage`. DAP passes the Home density the same way it passes theme. See [layout.md](layout.md).
 
 ### Entrypoint
 
