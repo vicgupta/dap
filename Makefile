@@ -9,6 +9,6 @@ test:
 run: build
 	./da run
 
-# TAG=v0.1.0-alpha.1 make release
+# TAG=v0.1.0-alpha.2 make release
 release:
-	packaging/macos/release.sh $(TAG)
+	packaging/release.sh $(TAG)

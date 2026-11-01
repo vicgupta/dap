@@ -1,9 +1,12 @@
 #!/bin/bash
-# Build the macOS pre-release artifacts into dist/release/.
+# Build the macOS artifacts into dist/release/.
 # Ad-hoc signs with rcodesign on Linux, or codesign -s - on macOS.
-# Does not notarize and does not upload. See publish.sh.
+# Does not notarize and does not upload.
 #
 # Usage: packaging/macos/release.sh v0.1.0-alpha.1
+# The all-platform entry point is packaging/release.sh. When
+# DAP_RELEASE_APPEND=1, this script only adds macOS files and leaves
+# checksums and installers to the caller.
 set -euo pipefail
 
 root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
@@ -57,9 +60,13 @@ commit=$(git -C "$root" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
 build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 ldflags="-s -w -X github.com/vicgupta/dap/internal/version.Release=${version} -X github.com/vicgupta/dap/internal/version.Commit=${commit} -X github.com/vicgupta/dap/internal/version.Date=${build_date}"
 
-work="$root/dist/work"
+work="$root/dist/work/macos"
 out="$root/dist/release"
-rm -rf "$work" "$out"
+if [ "${DAP_RELEASE_APPEND:-}" = 1 ]; then
+  rm -rf "$work"
+else
+  rm -rf "$root/dist/work" "$out"
+fi
 mkdir -p "$work/bin" "$out"
 
 echo "Building da ${version} (${commit})"
@@ -187,16 +194,31 @@ for arch in arm64 amd64 universal; do
   rm -rf "$tmp"
 done
 
-sed "s/v0.1.0-alpha.1/${tag}/g" "$root/scripts/install.sh" > "$out/install.sh"
+if [ "${DAP_RELEASE_APPEND:-}" = 1 ]; then
+  echo "macOS artifacts added to ${out}"
+  exit 0
+fi
+
+awk -v tag="$tag" '
+  index($0, "DAP_TAG:-") {
+    print "TAG=\"${DAP_TAG:-" tag "}\""
+    next
+  }
+  { print }
+' "$root/scripts/install.sh" > "$out/install.sh"
 chmod 755 "$out/install.sh"
 
 (
   cd "$out"
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum DAP-*.zip da-*.tar.gz install.sh
-  else
-    shasum -a 256 DAP-*.zip da-*.tar.gz install.sh
-  fi
+  for name in *; do
+    [ -f "$name" ] || continue
+    [ "$name" = checksums.txt ] && continue
+    if command -v sha256sum >/dev/null 2>&1; then
+      sha256sum "$name"
+    else
+      shasum -a 256 "$name"
+    fi
+  done
 ) | sort -k2 > "$out/checksums.txt"
 
 cat > "$root/dist/NOTES.md" << EOF

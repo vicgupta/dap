@@ -11,7 +11,7 @@ Core version: `0.1.0` (`internal/version`). Go `1.22` or newer.
 | [docs/plugins.md](docs/plugins.md) | `plugin.yaml`, the five-step interface, authoring in any language |
 | [docs/runtime.md](docs/runtime.md) | Scheduler, inbox, guardrails, ledger, secrets, doctor, data directory, limitations |
 | [docs/inbox-followups.md](docs/inbox-followups.md) | Follow-ups watcher, Connections, Gmail and Outlook sign-in |
-| [docs/release.md](docs/release.md) | macOS pre-release install, Gatekeeper, checksums |
+| [docs/release.md](docs/release.md) | Release install, Gatekeeper, SmartScreen, checksums |
 
 ## Install the macOS pre-release
 
@@ -50,6 +50,21 @@ The same `gh release download` command works for any single file:
 ```bash
 gh release download v0.1.0-alpha.1 --repo vicgupta/dap --pattern DAP-0.1.0-alpha.1-macos-arm64.zip
 ```
+
+## Linux and Windows
+
+v0.1.0-alpha.1 does not include Linux or Windows archives. After this packaging change is on `main`, the next `v*` tag builds them. `install.sh` on Linux and `install.ps1` on Windows use `gh release download` and check SHA256. Neither script embeds a token.
+
+```bash
+gh release download <tag> --repo vicgupta/dap --pattern install.sh && sh install.sh
+```
+
+```powershell
+gh release download <tag> --repo vicgupta/dap --pattern install.ps1
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+Those tags publish `da-<version>-linux-amd64.tar.gz`, `da-<version>-linux-arm64.tar.gz`, `dap_<version>_amd64.deb` and the arm64 deb (Debian version uses `~` in place of the pre-release hyphen), and `DAP-<version>-windows-amd64.zip`. Names and SmartScreen steps are in [docs/release.md](docs/release.md).
 
 ## Run
 

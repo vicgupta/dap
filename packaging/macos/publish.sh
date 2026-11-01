@@ -3,7 +3,7 @@
 # Creates a pre-release when the tag contains -alpha, -beta, or -rc.
 # Uses the current gh login (GH_TOKEN in GitHub Actions). No token is written to disk.
 #
-# Usage: packaging/macos/publish.sh v0.1.0-alpha.1
+# Usage: packaging/macos/publish.sh v0.1.0-alpha.2
 set -euo pipefail
 
 root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
@@ -20,7 +20,7 @@ esac
 out="$root/dist/release"
 notes="$root/dist/NOTES.md"
 if [ ! -d "$out" ] || [ ! -f "$notes" ]; then
-  echo "missing ${out}; run packaging/macos/release.sh first" >&2
+  echo "missing ${out}; run packaging/release.sh first" >&2
   exit 1
 fi
 
