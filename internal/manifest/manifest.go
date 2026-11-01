@@ -4,6 +4,7 @@ package manifest
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -34,6 +35,7 @@ type Manifest struct {
 	Interface     string         `json:"interface" yaml:"interface"`
 	Description   string         `json:"description,omitempty" yaml:"description,omitempty"`
 	Entrypoint    Entrypoint     `json:"entrypoint" yaml:"entrypoint"`
+	Runtime       string         `json:"runtime,omitempty" yaml:"runtime,omitempty"`
 	Dependencies  []Dependency   `json:"dependencies,omitempty" yaml:"dependencies,omitempty"`
 	Permissions   PermissionList `json:"permissions,omitempty" yaml:"permissions,omitempty"`
 	Provides      []string       `json:"provides,omitempty" yaml:"provides,omitempty"`
@@ -320,6 +322,11 @@ func (m *Manifest) Validate(dir string) error {
 	if len(m.Entrypoint) == 0 {
 		return fmt.Errorf("entrypoint is required")
 	}
+	switch m.Runtime {
+	case "", "node", "bun":
+	default:
+		return fmt.Errorf("runtime must be node or bun")
+	}
 	if err := m.Schedule.Validate(); err != nil {
 		return err
 	}
@@ -480,6 +487,51 @@ func (s Schedule) Label() string {
 	default:
 		return "manual"
 	}
+}
+
+// Launch resolves the entrypoint and, when runtime is set, the Node or Bun binary.
+func (m Manifest) Launch(dir string) ([]string, error) {
+	argv, err := m.Entrypoint.Command(dir)
+	if err != nil {
+		return nil, err
+	}
+	switch m.Runtime {
+	case "":
+		return argv, nil
+	case "node":
+		return withRuntime(NodeBin(), argv), nil
+	case "bun":
+		return withRuntime(BunBin(), argv), nil
+	default:
+		return nil, fmt.Errorf("runtime must be node or bun")
+	}
+}
+
+func withRuntime(bin string, argv []string) []string {
+	if len(argv) == 0 {
+		return []string{bin}
+	}
+	base := filepath.Base(argv[0])
+	if base == "node" || base == "bun" || base == "node.exe" || base == "bun.exe" {
+		return argv
+	}
+	return append([]string{bin}, argv...)
+}
+
+// NodeBin is the Node.js binary used for runtime: node.
+func NodeBin() string {
+	if p, err := exec.LookPath("node"); err == nil {
+		return p
+	}
+	return "node"
+}
+
+// BunBin is the Bun binary used for runtime: bun.
+func BunBin() string {
+	if p, err := exec.LookPath("bun"); err == nil {
+		return p
+	}
+	return "bun"
 }
 
 // Command resolves the entrypoint to an argv whose paths stay inside dir.

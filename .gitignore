@@ -1,6 +1,7 @@
 /da
 /da.exe
 /dist/
+node_modules/
 .dap/
 *.out
 coverage.txt

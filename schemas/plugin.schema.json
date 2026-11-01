@@ -30,6 +30,10 @@
     "description": {
       "type": "string"
     },
+    "runtime": {
+      "enum": ["node", "bun"],
+      "description": "How DAP launches a JavaScript entry. node runs the file with Node.js. bun runs it with Bun, including TypeScript sources."
+    },
     "entrypoint": {
       "oneOf": [
         { "type": "string", "minLength": 1 },

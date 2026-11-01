@@ -4,7 +4,7 @@ A plugin is a directory with `plugin.yaml` and an entrypoint. `da plugin install
 
 To write one, follow [plugin-authoring.md](plugin-authoring.md). The schema is [schemas/plugin.schema.json](../schemas/plugin.schema.json). `da plugin validate <path>` checks it.
 
-The shipped examples are `plugins/hello-watch` (a watcher) and `plugins/workflow` (a workflow with a step editor). Both are Python 3 so the protocol is not tied to Go. A Go, JavaScript, or Rust plugin uses the same stdin and stdout messages.
+The shipped reference watcher, `plugins/hello-watch`, is TypeScript and uses `@dap/plugin-sdk`. `plugins/workflow` and the mail connectors stay Python. Any language that can speak the JSON-RPC contract still works. New plugins should be TypeScript unless you pass `--lang python`.
 
 ## `plugin.yaml`
 
@@ -321,3 +321,5 @@ Call the scoped API with `Authorization: Bearer <token>` and `api_base` from `in
 `workflow` stores its cursor with `PUT /state`. Safe steps call `POST /check` with `workflow.run` and no effects, then `POST /log`. A step whose effects include `sends`, `spends`, or `deletes` becomes one card with permission `share.team` and waits. `act` calls `POST /call` with that card id before it records the step, then runs any following safe steps. The step editor (`plugins/workflow/ui`) saves by `POST /propose` with `kind: change` and permission `workflow.rules`. The new steps and `every` apply only after that card is approved.
 
 Both can be installed together. They do not depend on each other, and a pending card in one does not stop the other.
+
+`mail-fake`, `mail-gmail`, and `mail-graph` are capability plugins. `inbox-followups` is a watcher that proposes drafts and sends only after you approve a card. Tokens stay in the host. The setup and the mail API are in [inbox-followups.md](inbox-followups.md).

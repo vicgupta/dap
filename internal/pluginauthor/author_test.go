@@ -54,3 +54,10 @@ func TestTutorialExampleValidates(t *testing.T) {
 		t.Fatalf("%+v", rep.Checks)
 	}
 }
+
+func TestHelloWatchValidates(t *testing.T) {
+	rep := Validate(filepath.Join("..", "..", "plugins", "hello-watch"))
+	if !rep.OK {
+		t.Fatalf("%+v", rep.Checks)
+	}
+}

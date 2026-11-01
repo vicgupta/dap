@@ -1,0 +1,19 @@
+name: mail-graph
+version: 0.1.0
+min_dap_version: 0.1.0
+type: capability
+interface: dap.plugin.v1
+description: Outlook mailbox for a personal Microsoft account. DAP holds the token.
+entrypoint: mail_graph.py
+permissions:
+  - name: mail.read
+    mode: allowed
+    description: Read Outlook threads
+  - name: mail.draft
+    mode: allowed
+    description: Prepare an Outlook draft, without sending
+  - name: mail.send
+    mode: ask_first
+    description: Send mail as you from Outlook
+provides:
+  - outlook

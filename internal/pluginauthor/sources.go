@@ -1,9 +1,18 @@
 package pluginauthor
 
+import pysdk "github.com/vicgupta/dap/sdk/python"
+
 func agentsMD(name, kind, lang string) string {
+	prefer := "Write this plugin in TypeScript and use the SDK in vendor/plugin-sdk. Use Python only if the user asked for Python."
+	if lang == "python" {
+		prefer = "The user asked for Python. Use dap_plugin.py in this directory. Do not convert the plugin to TypeScript unless they ask."
+	}
 	return `# Build this DAP plugin
 
 You are editing the plugin in this directory (` + name + `, type ` + kind + `, language ` + lang + `). DAP does not host a model. You are the user's coding agent. Follow this file. The long form is docs/plugin-authoring.md in the DAP repo, and the machine-readable contract is schemas/plugin.schema.json.
+
+` + prefer + `
+
 
 ## Rules
 
@@ -43,48 +52,39 @@ Effects may only be sends, spends, or deletes. kind is action or change.
 `
 }
 
+func pythonHelper() string {
+	return pysdk.Helper
+}
+
 func pythonSrc(name, kind, perm string) string {
 	cards := pythonCards(name, kind, perm)
 	return `#!/usr/bin/env python3
 """DAP plugin ` + name + `. Stdout is JSON-RPC only. Logs go to stderr."""
-import json
-import sys
+import dap_plugin
 
-def reply(i, result=None, error=None):
-    msg = {"jsonrpc": "2.0", "id": i}
-    if error is not None:
-        msg["error"] = {"code": -32601, "message": str(error)}
-    else:
-        msg["result"] = result
-    sys.stdout.write(json.dumps(msg) + "\n")
-    sys.stdout.flush()
+def initialize(params, api):
+    return {"ready": True, "interface": "dap.plugin.v1", "health": {"status": "ok", "message": "ready"}}
 
-def handle(method, params):
-    if method == "initialize":
-        return {"ready": True, "interface": "dap.plugin.v1", "health": {"status": "ok", "message": "ready"}}
-    if method == "watch":
-        return {"observations": [], "tile": {"title": "` + name + `", "status": "ok", "lines": [{"label": "Status", "value": "idle"}]}}
-    if method == "propose":
-        return {"cards": ` + cards + `}
-    if method == "act":
-        return {"status": "done", "summary": "Recorded."}
-    if method == "report":
-        return {"metrics": [{"key": "runs", "label": "Runs", "value": 1}]}
-    raise RuntimeError("unknown method " + str(method))
+def watch(params, api):
+    return {"observations": [], "tile": {"title": "` + name + `", "status": "ok", "lines": [{"label": "Status", "value": "idle"}]}}
 
-for line in sys.stdin:
-    line = line.strip()
-    if not line:
-        continue
-    try:
-        req = json.loads(line)
-    except json.JSONDecodeError as exc:
-        sys.stderr.write("bad request: %s\n" % exc)
-        continue
-    try:
-        reply(req.get("id"), result=handle(req.get("method"), req.get("params") or {}))
-    except Exception as exc:
-        reply(req.get("id"), error=str(exc))
+def propose(params, api):
+    return {"cards": ` + cards + `}
+
+def act(params, api):
+    return {"status": "done", "summary": "Recorded."}
+
+def report(params, api):
+    return {"metrics": [{"key": "runs", "label": "Runs", "value": 1}]}
+
+if __name__ == "__main__":
+    dap_plugin.serve({
+        "initialize": initialize,
+        "watch": watch,
+        "propose": propose,
+        "act": act,
+        "report": report,
+    })
 `
 }
 
@@ -123,6 +123,91 @@ assert result["ready"] is True
 assert result["interface"] == "dap.plugin.v1"
 assert result["health"]["status"] == "ok"
 print("ok")
+`
+}
+
+func tsPackage(name string) string {
+	return `{
+  "name": "` + name + `",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/protocol.test.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "typescript": "^5.6.3"
+  }
+}
+`
+}
+
+func tsConfig() string {
+	return `{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "skipLibCheck": true
+  },
+  "include": ["src"]
+}
+`
+}
+
+func tsSrc(name, kind, perm string) string {
+	cards := "[]"
+	if kind != "capability" {
+		cards = `[{ title: "` + name + `", summary: "Nothing is sent.", kind: "action", permission: "` + perm + `", effects: [], editable: true }]`
+	}
+	return `import { serve, type PluginHandler } from "../vendor/plugin-sdk/dist/index.js";
+
+const plugin: PluginHandler = {
+  async initialize() {
+    return { ready: true, interface: "dap.plugin.v1", health: { status: "ok", message: "ready" } };
+  },
+  async watch() {
+    return { observations: [], tile: { title: "` + name + `", status: "ok", lines: [{ label: "Status", value: "idle" }] } };
+  },
+  async propose() {
+    return { cards: ` + cards + ` };
+  },
+  async act() {
+    return { status: "done", summary: "Recorded." };
+  },
+  async report() {
+    return { metrics: [{ key: "runs", label: "Runs", value: 1 }] };
+  },
+};
+
+serve(plugin);
+`
+}
+
+func tsTest() string {
+	return `import { spawn } from "node:child_process";
+import test from "node:test";
+import assert from "node:assert/strict";
+
+test("initialize answers the DAP contract", async () => {
+  const proc = spawn(process.execPath, ["dist/index.js"], { stdio: ["pipe", "pipe", "inherit"] });
+  let buf = "";
+  proc.stdout.on("data", (chunk) => { buf += chunk; });
+  proc.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { interface: "dap.plugin.v1", config: {} } }) + "\n");
+  proc.stdin.end();
+  const code = await new Promise((resolve, reject) => {
+    proc.on("exit", resolve);
+    proc.on("error", reject);
+  });
+  assert.equal(code, 0);
+  const msg = JSON.parse(buf.trim().split("\n")[0]);
+  assert.equal(msg.result.ready, true);
+  assert.equal(msg.result.interface, "dap.plugin.v1");
+});
 `
 }
 

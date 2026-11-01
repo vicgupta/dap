@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"encoding/json"
 	"os/exec"
 	"path/filepath"
@@ -52,12 +53,13 @@ type PluginSummary struct {
 
 // HomeView is the Home payload.
 type HomeView struct {
-	OK      bool            `json:"ok"`
-	Version string          `json:"version"`
-	Pending int             `json:"pending"`
-	Plugins []PluginSummary `json:"plugins"`
-	Secrets string          `json:"secrets_backend"`
-	Agents  []AgentInfo     `json:"agents"`
+	OK       bool            `json:"ok"`
+	Version  string          `json:"version"`
+	Pending  int             `json:"pending"`
+	Plugins  []PluginSummary `json:"plugins"`
+	Secrets  string          `json:"secrets_backend"`
+	Agents   []AgentInfo     `json:"agents"`
+	Runtimes []RuntimeInfo   `json:"runtimes"`
 }
 
 // AgentInfo is a local coding agent doctor can see.
@@ -75,12 +77,13 @@ func (a *App) Home() HomeView {
 		pending += p.Pending
 	}
 	return HomeView{
-		OK:      true,
-		Version: version.Version,
-		Pending: pending,
-		Plugins: plugins,
-		Secrets: a.SecretsBackend(),
-		Agents:  DetectAgents(),
+		OK:       true,
+		Version:  version.Version,
+		Pending:  pending,
+		Plugins:  plugins,
+		Secrets:  a.SecretsBackend(),
+		Agents:   DetectAgents(),
+		Runtimes: DetectRuntimes(),
 	}
 }
 
@@ -365,12 +368,97 @@ func (a *App) Doctor() DoctorReport {
 		}
 	}
 	add(DoctorCheck{Name: "agents", OK: true, Detail: strings.Join(parts, "; "), Level: "info"})
+	for _, rt := range DetectRuntimes() {
+		level := "info"
+		ok := true
+		if rt.Found && !rt.OK {
+			level = "error"
+			ok = false
+		}
+		add(DoctorCheck{Name: "runtime:" + rt.Name, OK: ok, Detail: rt.Detail, Level: level})
+	}
+	for _, c := range a.MailChecks(context.Background()) {
+		add(c)
+	}
 	return rep
 }
 
 // ScheduleOK is a placeholder so the doctor loop reads clearly. Plugins with a
 // schedule always have a label other than "manual".
 func (p PluginSummary) ScheduleOK() bool { return p.NextRun != nil }
+
+// RuntimeInfo is Node or Bun, used to launch TypeScript plugins.
+type RuntimeInfo struct {
+	Name    string `json:"name"`
+	Found   bool   `json:"found"`
+	OK      bool   `json:"ok"`
+	Path    string `json:"path,omitempty"`
+	Version string `json:"version,omitempty"`
+	Detail  string `json:"detail"`
+	Hint    string `json:"hint"`
+}
+
+// DetectRuntimes reports Node.js and Bun. Node must be 20 or newer to run compiled TypeScript plugins.
+func DetectRuntimes() []RuntimeInfo {
+	nodeHint := "Install Node.js 20 or newer from https://nodejs.org. DAP runs compiled TypeScript plugins with node dist/index.js."
+	bunHint := "Bun is optional. Install it from https://bun.sh and set runtime: bun to execute TypeScript directly."
+	out := []RuntimeInfo{
+		inspectNode(nodeHint),
+		inspectBun(bunHint),
+	}
+	return out
+}
+
+func inspectNode(hint string) RuntimeInfo {
+	info := RuntimeInfo{Name: "node", Hint: hint, Detail: "not on PATH. " + hint}
+	path, err := exec.LookPath("node")
+	if err != nil {
+		return info
+	}
+	info.Found = true
+	info.Path = path
+	ver := strings.TrimSpace(strings.TrimPrefix(commandVersion(path), "v"))
+	info.Version = ver
+	major := 0
+	if i := strings.IndexByte(ver, '.'); i > 0 {
+		fmtS := ver[:i]
+		for _, c := range fmtS {
+			if c < '0' || c > '9' {
+				major = 0
+				break
+			}
+			major = major*10 + int(c-'0')
+		}
+	}
+	if major >= 20 {
+		info.OK = true
+		info.Detail = "v" + ver + " at " + path
+		return info
+	}
+	info.Detail = "v" + ver + " is older than Node.js 20. " + hint
+	return info
+}
+
+func inspectBun(hint string) RuntimeInfo {
+	info := RuntimeInfo{Name: "bun", Hint: hint, OK: true, Detail: "not on PATH. " + hint}
+	path, err := exec.LookPath("bun")
+	if err != nil {
+		return info
+	}
+	info.Found = true
+	info.Path = path
+	info.Version = strings.TrimSpace(commandVersion(path))
+	info.Detail = info.Version + " at " + path
+	return info
+}
+
+func commandVersion(path string) string {
+	out, err := exec.Command(path, "-v").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
 
 // DetectAgents looks for the coding agents DAP can hand work to later.
 func DetectAgents() []AgentInfo {
@@ -405,6 +493,10 @@ type PluginContext struct {
 	State     json.RawMessage   `json:"state"`
 	OpenCards []CardBrief       `json:"open_cards"`
 	Health    model.Health      `json:"health"`
+	LastRun   *time.Time        `json:"last_run,omitempty"`
+	NextRun   *time.Time        `json:"next_run,omitempty"`
+	Missed    string            `json:"missed,omitempty"`
+	Pending   int               `json:"pending"`
 }
 
 // Context returns one plugin's config, scratch state, and open cards.
@@ -417,14 +509,28 @@ func (a *App) Context(plugin string) (PluginContext, error) {
 	if err != nil {
 		return PluginContext{}, err
 	}
-	return PluginContext{
+	ctx := PluginContext{
 		Plugin:    plugin,
 		Config:    rec.Config,
 		Schedule:  rec.Schedule,
 		State:     raw,
 		OpenCards: a.pluginCards(plugin, true),
 		Health:    a.runtimeOf(plugin).Health,
-	}, nil
+		LastRun:   rec.Run.LastRun,
+	}
+	if !rec.Run.NextRun.IsZero() {
+		t := rec.Run.NextRun
+		ctx.NextRun = &t
+	}
+	if rec.Run.MissedCount > 0 && rec.Run.MissedScheduled != nil {
+		ctx.Missed = missedText(rec.Run.MissedCount, *rec.Run.MissedScheduled, rec.Run.MissedReason)
+	}
+	for _, c := range a.store.Snapshot().Cards {
+		if c.Plugin == plugin && c.Status == model.StatusPending {
+			ctx.Pending++
+		}
+	}
+	return ctx, nil
 }
 
 // PluginCards lists cards for one plugin. openOnly keeps cards that still block a workflow.

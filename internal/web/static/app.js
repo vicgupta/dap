@@ -23,7 +23,7 @@ const state = {
   installPath: "",
   preview: null,
   data: {},
-  create: { description: "", name: "", type: "", lang: "python", ui: false, agent: "", phase: "form", log: "", report: null, path: "", edit: "" },
+  create: { description: "", name: "", type: "", lang: "ts", ui: false, agent: "", phase: "form", log: "", report: null, path: "", edit: "" },
 };
 
 const ICONS = {
@@ -33,12 +33,13 @@ const ICONS = {
   guard: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2.2 13 4.2v3.6c0 3-2.1 4.8-5 6-2.9-1.2-5-3-5-6V4.2L8 2.2Z"/></svg>',
   plugins: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 2.5h4V5H6zM3 6.5h4V9H3zM9 6.5h4V9H9zM6 10h4v2.5H6z"/><path d="M8 5v1.5M5 9v1.5h6V9"/></svg>',
   create: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2.5v11M2.5 8h11"/></svg>',
+  connections: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="4" cy="8" r="1.6"/><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="11" r="1.6"/><path d="M5.5 7.4 10.4 5.6M5.5 8.6l4.9 2"/></svg>',
 };
 
 function routeFromHash() {
   const h = (location.hash || "#/").replace(/^#\/?/, "");
   const path = h.split("?")[0];
-  if (["inbox", "activity", "guardrails", "plugins", "create"].includes(path)) return path;
+  if (["inbox", "activity", "guardrails", "plugins", "connections", "create"].includes(path)) return path;
   return "home";
 }
 
@@ -109,6 +110,7 @@ function shell(inner) {
           ${item("activity", "Activity", "activity")}
           ${item("guardrails", "Guardrails", "guard")}
           ${item("plugins", "Plugins", "plugins")}
+          ${item("connections", "Connections", "connections")}
           ${item("create", "Create plugin", "create")}
         </nav>
         <div class="side-foot"><strong>Running locally</strong>All data stays on this machine.</div>
@@ -336,6 +338,16 @@ function pluginsView() {
   `);
 }
 
+function runtimeHint(lang) {
+  const rows = (state.data.home && state.data.home.runtimes) || [];
+  const node = rows.find((r) => r.name === "node");
+  const bun = rows.find((r) => r.name === "bun");
+  if (lang === "python") return "Python plugins run with python3. The other shipped plugins that are still Python keep working.";
+  const nodeLine = node && node.ok ? "Node " + (node.version || "") + " is available." : "Node.js 20 or newer is not available. Install it from https://nodejs.org.";
+  const bunLine = bun && bun.found ? " Bun can run TypeScript directly when a plugin sets runtime: bun." : "";
+  return nodeLine + bunLine;
+}
+
 function suggestType(text) {
   const d = (text || "").toLowerCase();
   if (d.includes("workflow") || d.includes("step")) return "workflow";
@@ -403,11 +415,11 @@ function createView() {
       ${edit ? "" : `<label class="field inline"><input name="ui" type="checkbox" ${c.ui ? "checked" : ""} /> Include a small web page</label>
       <label class="field">Language
         <select name="lang">
+          <option value="ts" ${c.lang === "ts" ? "selected" : ""}>TypeScript</option>
           <option value="python" ${c.lang === "python" ? "selected" : ""}>Python</option>
-          <option value="go" ${c.lang === "go" ? "selected" : ""}>Go</option>
-          <option value="node" ${c.lang === "node" ? "selected" : ""}>Node</option>
         </select>
-      </label>`}
+      </label>
+      <p class="sub">${runtimeHint(c.lang)}</p>`}
       <div>
         <p class="sub">Coding agent</p>
         <div class="type-row">${agentBtns || `<p class="sub">No agent list yet.</p>`}</div>
@@ -419,6 +431,53 @@ function createView() {
   `);
 }
 
+function connectionsView() {
+  const data = state.data.connections;
+  if (!data) return shell(`<p class="sub">Loading…</p>`);
+  const cards = (data.connections || []).map((c) => {
+    const dot = c.connected ? "ok" : "degraded";
+    const scopes = (c.scopes || []).join(", ") || "—";
+    const throttle = c.throttle && c.throttle.active ? `Throttled until ${esc(fmtTime(c.throttle.until))}.` : "";
+    const client = c.provider === "fake" ? "" : `
+      <label class="field">Client ID
+        <input data-client="${esc(c.provider)}" type="text" value="${esc(c.client_id || "")}" placeholder="Public client id" />
+      </label>`;
+    const calendar = c.provider === "graph" ? `
+      <label class="sub"><input data-calendar type="checkbox" ${c.calendar_enabled ? "checked" : ""} /> Calendars.Read (off unless you need it)</label>` : "";
+    return `<article class="card plugin-block">
+      <header class="row">
+        <span class="dot ${dot}"></span>
+        <div style="flex:1">
+          <h2 style="margin:0">${esc(c.label)}</h2>
+          <p class="sub">${c.connected ? "Connected" : "Not connected"}${c.account ? " · " + esc(c.account) : ""} · ${esc(c.broker || "")}</p>
+      </div>
+        ${c.installed ? `<span class="pill allowed">Installed</span>` : `<span class="pill">Not installed</span>`}
+      </header>
+      ${c.refresh_detail && c.refresh_detail !== "not connected" ? `<p class="sub">${esc(c.refresh_detail)}</p>` : ""}
+      <p class="sub">Scopes: ${esc(scopes)}</p>
+      ${throttle ? `<p class="missed">${throttle}</p>` : ""}
+      ${client}
+      ${calendar}
+      <div class="actions" style="margin-top:12px">
+        ${c.provider !== "fake" ? `<button class="ghost" data-act="save-connection" data-provider="${esc(c.provider)}">Save client id</button>` : ""}
+        ${c.connected
+          ? `<button class="ghost" data-act="disconnect" data-provider="${esc(c.provider)}">Disconnect</button>`
+          : `<button class="primary" data-act="connect" data-provider="${esc(c.provider)}">Connect</button>`}
+      </div>
+    </article>`;
+  }).join("");
+  const agents = (data.agents || []).map((a) => `<li>${esc(a.name)} · ${a.found ? esc(a.path) : "not on PATH"}</li>`).join("");
+  return shell(`
+    <header class="page-head"><div>
+      <h1>Connections</h1>
+      <p>Mail tokens stay in the OS keychain. Plugins never see them. You sign in inside Google or Microsoft’s window.</p>
+    </div></header>
+    <div class="stack">${cards}</div>
+    <h2 class="section-title">Coding agents</h2>
+    <ul class="card plugin-block">${agents}</ul>
+  `);
+}
+
 function render() {
   const root = document.getElementById("app");
   const html = {
@@ -427,6 +486,7 @@ function render() {
     activity: activityView,
     guardrails: guardView,
     plugins: pluginsView,
+    connections: connectionsView,
     create: createView,
   }[state.route]();
   root.innerHTML = html;
@@ -443,6 +503,7 @@ async function refresh() {
     if (state.route === "activity") state.data.activity = await api("/api/activity");
     if (state.route === "guardrails") state.data.guard = await api("/api/guardrails");
     if (state.route === "plugins" || state.route === "create") state.data.plugins = await api("/api/plugins");
+    if (state.route === "connections") state.data.connections = await api("/api/connections");
     if (state.route !== "home") {
       state.data.home = await api("/api/home");
     }
@@ -491,7 +552,7 @@ document.addEventListener("click", (ev) => {
     return;
   }
   if (actName === "edit-agent") {
-    state.create = { description: "", name: el.dataset.name, type: "", lang: "python", ui: false, agent: "", phase: "form", log: "", report: null, path: "", edit: el.dataset.name };
+    state.create = { description: "", name: el.dataset.name, type: "", lang: "ts", ui: false, agent: "", phase: "form", log: "", report: null, path: "", edit: el.dataset.name };
     location.hash = "#/create?edit=" + encodeURIComponent(el.dataset.name);
     state.route = "create";
     render();
@@ -504,7 +565,7 @@ document.addEventListener("click", (ev) => {
     return;
   }
   if (actName === "create-reset") {
-    state.create = { description: "", name: "", type: "", lang: "python", ui: false, agent: "", phase: "form", log: "", report: null, path: "", edit: "" };
+    state.create = { description: "", name: "", type: "", lang: "ts", ui: false, agent: "", phase: "form", log: "", report: null, path: "", edit: "" };
     location.hash = "#/create";
     render();
     return;
@@ -551,6 +612,18 @@ document.addEventListener("click", (ev) => {
   } else if (actName === "cancel-install") {
     state.preview = null;
     render();
+  } else if (actName === "connect") {
+    act("connect", () => api("/api/connections/" + el.dataset.provider + "/connect", { method: "POST", body: {} }));
+  } else if (actName === "disconnect") {
+    act("disconnect", () => api("/api/connections/" + el.dataset.provider + "/disconnect", { method: "POST", body: {} }));
+  } else if (actName === "save-connection") {
+    const provider = el.dataset.provider;
+    const input = document.querySelector(`[data-client="${provider}"]`);
+    const cal = document.querySelector("[data-calendar]");
+    act("setup", () => api("/api/connections/" + provider + "/setup", {
+      method: "POST",
+      body: { client_id: input ? input.value.trim() : "", calendar: !!(cal && cal.checked && provider === "graph") },
+    }));
   } else if (actName === "confirm-install") {
     act("install", async () => {
       await api("/api/plugins/install", { method: "POST", body: { path: state.installPath, approve: true } });

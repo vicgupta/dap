@@ -111,7 +111,7 @@ const usage = `da — Dashboard Agent Platform
   da plugin list
   da plugin remove <name>
   da plugin approve <name>
-  da plugin new <name> [--type watcher|capability|workflow] [--lang python|go|node] [--ui] [--dir path]
+  da plugin new <name> [--type watcher|capability|workflow] [--lang ts|python] [--ui] [--dir path]
   da plugin validate <path>
   da plugin dev <path>
   da context [--plugin name]
@@ -622,7 +622,7 @@ func readInput(r io.Reader, dest any) (bool, error) {
 func cmdPluginLocal(args []string, opt Options) (any, error) {
 	switch args[0] {
 	case "new":
-		optNew := pluginauthor.Options{Lang: "python", Type: "watcher"}
+		optNew := pluginauthor.Options{Lang: "ts", Type: "watcher"}
 		var name string
 		for i := 1; i < len(args); i++ {
 			a := args[i]
@@ -657,7 +657,7 @@ func cmdPluginLocal(args []string, opt Options) (any, error) {
 			}
 		}
 		if name == "" {
-			return nil, errors.New("usage: da plugin new <name> [--type watcher|capability|workflow] [--lang python|go|node] [--ui] [--dir path]")
+			return nil, errors.New("usage: da plugin new <name> [--type watcher|capability|workflow] [--lang ts|python] [--ui] [--dir path]")
 		}
 		optNew.Name = name
 		path, err := pluginauthor.Scaffold(optNew)

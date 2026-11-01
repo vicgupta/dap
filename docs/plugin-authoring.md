@@ -40,16 +40,24 @@ Unknown keys are rejected. `da plugin validate` reports the schema path and the 
 
 ### Entrypoint
 
+- `runtime: node` runs the entry file with Node.js 20 or newer. The usual entry is the compiled `dist/index.js`.
+- `runtime: bun` runs the entry with Bun, which can execute `src/index.ts` directly.
 - `plugin.py` is run with `python3` on macOS and Linux, and `python` or `py` on Windows.
-- Any other relative file is executed directly. A Node plugin needs a shebang (`#!/usr/bin/env node`) and the executable bit.
-- A list runs that argv. A bare first word such as `go` is looked up on `PATH`. A path with a slash stays inside the plugin directory. `..` that escapes the directory is rejected.
+- Any other relative file without a runtime is executed directly.
+- A list runs that argv. A bare first word such as `node` is looked up on `PATH`. A path with a slash stays inside the plugin directory. `..` that escapes the directory is rejected.
+
+```yaml
+runtime: node
+entrypoint: dist/index.js
+```
+
+```yaml
+runtime: bun
+entrypoint: src/index.ts
+```
 
 ```yaml
 entrypoint: plugin.py
-entrypoint:
-  - go
-  - run
-  - .
 ```
 
 ### Dependencies
@@ -99,7 +107,7 @@ What a declaration allows:
 
 A permission does not grant network, shell, or another plugin's files by itself. Those are your process. Do not take them unless the description says so.
 
-`mail.read`, `mail.draft`, and `mail.send` are ordinary permission names on this core. The host routes that actually read and send mail (`/mail/threads`, `/mail/send`) are not in this tree yet. They are the inbox follow-ups work, which is a separate pull request. Do not call those paths until that work is merged. If the person must approve a send, put `effects: [sends]` on a card and do the send in `act` only after the core calls it.
+`mail.read` allows `GET /mail/threads?provider=gmail|graph|fake`. `mail.send` allows `POST /mail/send`, and only when the body includes `card_id` for an approved card whose effects include `sends`. The SDK helpers are `mailThreads` and `mailSend` in TypeScript, and `mail_threads` and `mail_send` in Python. They never return an access token or a refresh token. Declare `mail.draft` when you only prepare text. A send still waits for a person even if you also declare the permission as `allowed`.
 
 A person can tighten a permission (`allowed` to `ask_first`, or either to `never`). They cannot loosen one. Your manifest cannot override that.
 
@@ -281,7 +289,7 @@ Secrets are stored as service `dap.plugin.<name>`. You cannot read another plugi
 
 Call `dap-api` (`/api/...` on the plugin origin) with the plugin token. The sandbox proxies that to `/v1/<name>/...`.
 
-Approving, editing, rejecting, and snoozing cards from the plugin page is not available on this core. Those routes arrive with the inbox follow-ups work. Until then, send the person to `dap-inbox` (the admin origin's `/#/inbox`) and let them approve there. The same keys work in the core inbox: `j`/`k` move, `a` approves, `e` edits, `r` rejects, `s` snoozes.
+A plugin page can approve, edit, reject, or snooze its own cards: `GET /inbox` and `POST /inbox/{id}/approve|edit|reject|snooze`. Those calls use the plugin token and the same guardrails as the core inbox. The page can also send the person to `dap-inbox`. The core inbox keys are `j`/`k` move, `a` approves, `e` edits, `r` rejects, `s` snoozes.
 
 Theme: read `?theme=` before paint, as `examples` scaffolds do in `ui/theme-boot.js`. Support `light`, `dark`, and `system`.
 
@@ -302,7 +310,7 @@ Theme: read `?theme=` before paint, as `examples` scaffolds do in `ui/theme-boot
 ## Install, approve, remove
 
 ```bash
-da plugin new note-watch --type watcher --lang python
+da plugin new note-watch --type watcher
 da plugin validate ./note-watch
 da plugin dev ./note-watch
 da plugin install ./note-watch          # previews permissions, installs nothing
@@ -343,40 +351,73 @@ Do not:
 
 ## Tutorial: note-watch
 
-The finished plugin is [examples/note-watch](../examples/note-watch). `da plugin validate examples/note-watch` passes. The steps below are that directory.
+The TypeScript reference is [plugins/hello-watch](../plugins/hello-watch). `da plugin validate plugins/hello-watch` passes. [examples/note-watch](../examples/note-watch) is the same contract in Python.
 
-1. `da plugin new note-watch --type watcher --lang python`
-2. The manifest declares `note.watch` as `ask_first` and runs every hour. Nothing is sent, so `effects` is empty. The card still waits because the mode is ask-first. The card title in the example is "Save a note."
-3. `plugin.py` answers the five methods and returns an error for anything else. Stdout is one JSON line. The test `python3 test_protocol.py` checks `initialize`.
-4. `da plugin validate .` must print `"ok": true`.
+1. `da plugin new note-watch --type watcher` writes TypeScript. `runtime: node` and `entrypoint: dist/index.js`. The source imports `@dap/plugin-sdk` from `vendor/plugin-sdk`.
+2. The manifest declares `note.watch` as `ask_first` and runs every hour. Nothing is sent, so `effects` is empty. The card still waits because the mode is ask-first.
+3. `src/index.ts` answers the five methods through `serve()`. Unknown methods return a JSON-RPC error. `npm test` builds and checks `initialize` with `node:test`.
+4. `da plugin validate .` builds when `dist` is stale, then must print `"ok": true`.
 5. Install only after you have read the permission sentence, with `da plugin install . --approve`, or by approving the change card from **Create plugin**.
 
-A Go plugin is the same protocol. `da plugin new ping --lang go --type capability` writes `main.go` with entrypoint `go run .`. A Node plugin is `da plugin new ping --lang node` and `plugin.js` with a shebang. Both pass `da plugin validate`.
+Python is the other supported language: `da plugin new notes-py --lang python`. It copies `dap_plugin.py` and a `plugin.py` that calls `dap_plugin.serve`. `plugins/workflow` is a larger Python example. Go is the language of the `da` binary, not of plugins.
+
+## Minimal TypeScript plugin
+
+`plugins/hello-watch/src/index.ts` is the reference. A new plugin looks like this:
+
+```ts
+import { serve, type PluginHandler } from "../vendor/plugin-sdk/dist/index.js";
+
+const plugin: PluginHandler = {
+  async initialize() {
+    return { ready: true, interface: "dap.plugin.v1", health: { status: "ok", message: "ready" } };
+  },
+  async watch() {
+    return { observations: [], tile: { title: "Notes", status: "ok", lines: [] } };
+  },
+  async propose() {
+    return { cards: [{ title: "Save a note", summary: "Nothing is sent.", kind: "action", permission: "note.watch", effects: [] }] };
+  },
+  async act() {
+    return { status: "done", summary: "Recorded the note." };
+  },
+  async report() {
+    return { metrics: [{ key: "notes", label: "Notes", value: 1 }] };
+  },
+};
+
+serve(plugin);
+```
 
 ## Minimal Python loop
 
-`examples/note-watch/plugin.py` is the loop. The shape is:
+`da plugin new name --lang python` writes this shape:
 
 ```python
-def handle(method, params):
-    if method == "initialize":
-        return {"ready": True, "interface": "dap.plugin.v1", "health": {"status": "ok", "message": "ready"}}
-    if method == "watch":
-        return {"observations": [], "tile": {"title": "Notes", "status": "ok", "lines": []}}
-    if method == "propose":
-        return {"cards": [{"title": "Save a note", "summary": "Nothing is sent.", "kind": "action", "permission": "note.watch", "effects": []}]}
-    if method == "act":
-        return {"status": "done", "summary": "Recorded the note."}
-    if method == "report":
-        return {"metrics": [{"key": "notes", "label": "Notes", "value": 1}]}
-    raise RuntimeError("unknown method " + str(method))
+import dap_plugin
+
+def initialize(params, api):
+    return {"ready": True, "interface": "dap.plugin.v1", "health": {"status": "ok", "message": "ready"}}
+
+def watch(params, api):
+    return {"observations": [], "tile": {"title": "Notes", "status": "ok", "lines": []}}
+
+def propose(params, api):
+    return {"cards": [{"title": "Save a note", "summary": "Nothing is sent.", "kind": "action", "permission": "note.watch", "effects": []}]}
+
+def act(params, api):
+    return {"status": "done", "summary": "Recorded the note."}
+
+def report(params, api):
+    return {"metrics": [{"key": "notes", "label": "Notes", "value": 1}]}
+
+if __name__ == "__main__":
+    dap_plugin.serve({
+        "initialize": initialize, "watch": watch, "propose": propose, "act": act, "report": report,
+    })
 ```
 
-Read a line, parse JSON, write one line, flush.
-
-## Minimal Go loop
-
-`da plugin new` with `--lang go` writes this structure. `handle` returns the same JSON shapes as the Python loop. `main` scans stdin and writes one JSON line per request. Unknown methods return `error.code` `-32601`.
+`dap_plugin.Host` wraps config, scratch state, secrets, and `mail_threads` / `mail_send`. `mail_send` still requires an approved card. The helper never returns an OAuth token.
 
 ## Checklist
 

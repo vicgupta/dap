@@ -48,7 +48,7 @@ func Validate(dir string) Report {
 	} else {
 		add(Check{Name: "schema", OK: true, Detail: "plugin.yaml matches schemas/plugin.schema.json"})
 	}
-	m, err := manifest.Parse(raw, dir)
+	m, err := manifest.Parse(raw, "")
 	if err != nil {
 		add(Check{Name: "manifest", OK: false, Detail: err.Error()})
 		return rep
@@ -58,7 +58,18 @@ func Validate(dir string) Report {
 	if !rep.OK {
 		return rep
 	}
-	argv, err := m.Entrypoint.Command(dir)
+	if detail, err := prepareBuild(dir); err != nil {
+		add(Check{Name: "build", OK: false, Detail: err.Error()})
+		return rep
+	} else if detail != "" {
+		add(Check{Name: "build", OK: true, Detail: detail})
+	}
+	m, err = manifest.Parse(raw, dir)
+	if err != nil {
+		add(Check{Name: "manifest", OK: false, Detail: err.Error()})
+		return rep
+	}
+	argv, err := m.Launch(dir)
 	if err != nil {
 		add(Check{Name: "start", OK: false, Detail: err.Error()})
 		return rep

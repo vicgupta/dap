@@ -3,6 +3,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -121,6 +122,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/create/validate", s.auth(s.createValidate))
 	mux.HandleFunc("POST /api/create/propose", s.auth(s.createPropose))
 	mux.HandleFunc("GET /api/doctor", s.auth(s.doctor))
+	mux.HandleFunc("GET /api/connections", s.auth(s.connections))
+	mux.HandleFunc("POST /api/connections/{provider}/setup", s.auth(s.connectionSetup))
+	mux.HandleFunc("POST /api/connections/{provider}/connect", s.auth(s.connectionConnect))
+	mux.HandleFunc("POST /api/connections/{provider}/disconnect", s.auth(s.connectionDisconnect))
 	mux.HandleFunc("GET /api/approved", s.auth(s.approved))
 	mux.HandleFunc("GET /api/context", s.auth(s.context))
 	mux.HandleFunc("POST /api/propose", s.auth(s.propose))
@@ -412,6 +417,44 @@ func (s *Server) createPropose(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "card": card})
+}
+
+func (s *Server) connections(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "connections": s.App.MailStatuses(), "agents": core.DetectAgents()})
+}
+
+func (s *Server) connectionSetup(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ClientID string `json:"client_id"`
+		Calendar bool   `json:"calendar"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	if err := s.App.MailSetup(r.PathValue("provider"), body.ClientID, body.Calendar); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) connectionConnect(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 4*time.Minute)
+	defer cancel()
+	if err := s.App.MailConnect(ctx, r.PathValue("provider")); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) connectionDisconnect(w http.ResponseWriter, r *http.Request) {
+	if err := s.App.MailDisconnect(r.PathValue("provider")); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (s *Server) doctor(w http.ResponseWriter, r *http.Request) {

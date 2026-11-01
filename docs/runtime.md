@@ -101,6 +101,7 @@ Kinds the core writes today:
 | `plugin.log` | `da log` or `POST /log` |
 | `tile.write` | `da tile write` or `POST /tile` |
 | `outcome` | `da outcome` |
+| `mail.connect`, `mail.disconnect`, `mail.sent`, `mail.undo` | Mailbox connection changes and sends. Allowed mail reads are not logged |
 
 `plugin.stop` exists as a constant and is not written by this version. Stopping a plugin does not append a row.
 
@@ -108,7 +109,7 @@ Kinds the core writes today:
 
 ## Secrets
 
-`secrets.Keeper` is `Set`, `Get`, and `Delete` by service and account. Plugin HTTP uses service `dap.plugin.<plugin-name>`, so one plugin cannot read another's account names.
+`secrets.Keeper` is `Set`, `Get`, and `Delete` by service and account. Plugin HTTP uses service `dap.plugin.<plugin-name>`, so one plugin cannot read another's account names. Mail tokens use service `dap.mail` and are not returned on the plugin API.
 
 `Open` builds the store like this:
 
@@ -136,6 +137,7 @@ See [cli.md](cli.md) for the command. The check list is fixed:
 4. `dependencies` is `resolved`, or the order error from the last start.
 5. For each installed plugin, `scheduler:<name>` when it has a schedule, then `plugin:<name>`, then `permissions:<name>`.
 6. `agents` looks up `claude`, `codex`, and `opencode` with `LookPath`.
+7. `mail:<provider>` for each installed mailbox. See [inbox-followups.md](inbox-followups.md).
 
 Info-level failures do not clear `ok`. Error-level failures do. A plugin that was installed while the server was stopped shows as not running until `da serve` or a doctor run starts it.
 
@@ -152,6 +154,8 @@ Mode `0700` on the directory. JSON state files are mode `0600`.
 | `dap.lock` | Exclusive lock held by `da serve` / `da run` and by a one-shot command. |
 | `run.json` | While the server is up: `pid`, `addr`, `token`, `started`. Removed on a clean shutdown. Mode `0600`. |
 | `plugin-data/<name>/` | The `data_dir` passed to `initialize`. |
+| `mail/public.json` | Gmail and Outlook public client ids. Not a token. Mode `0600`. |
+| `mail/fake.json` | Demo mailbox threads and connection flag. |
 
 `state.json` keeps cards after `da plugin remove`. The ledger is never trimmed. There is no export command.
 
@@ -174,6 +178,7 @@ What they cover:
 - Both example plugins in one process: concurrent runs, approve then `act`, a second run while a card is pending, a missed run, a change card, a `never` override.
 - Admin HTTP rejects a missing token and serves the UI with the session token.
 - CLI init, install preview, install, list, and `da check` of an undeclared permission.
+- Gmail and Graph clients against mocked HTTP, PKCE sign-in with an incremental send scope, and an approval-gated demo send.
 
 ## Limitations
 

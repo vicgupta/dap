@@ -4,7 +4,7 @@ This repository is the Dashboard Agent Platform core. DAP does not host a model.
 
 ## Build a plugin
 
-Read [docs/plugin-authoring.md](docs/plugin-authoring.md) before editing a plugin. The machine-readable contract is [schemas/plugin.schema.json](schemas/plugin.schema.json). `da plugin validate <path>` checks the schema, the manifest rules, and the JSON-RPC lifecycle.
+Write plugins in TypeScript unless the user asks for Python. Use `@dap/plugin-sdk` in [sdk/typescript](sdk/typescript). Read [docs/plugin-authoring.md](docs/plugin-authoring.md) before editing a plugin. The machine-readable contract is [schemas/plugin.schema.json](schemas/plugin.schema.json). `da plugin validate <path>` checks the schema, builds TypeScript when `package.json` has a build script, and exercises the JSON-RPC lifecycle.
 
 A scaffolded plugin also contains its own `AGENTS.md`. Follow that file when the working directory is the plugin, not this repo.
 

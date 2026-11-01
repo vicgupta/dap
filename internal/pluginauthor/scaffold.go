@@ -2,9 +2,12 @@ package pluginauthor
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/vicgupta/dap/sdk/typescript"
 )
 
 // Options is a new plugin skeleton.
@@ -37,12 +40,14 @@ func Scaffold(opt Options) (string, error) {
 	}
 	lang := opt.Lang
 	if lang == "" {
-		lang = "python"
+		lang = "ts"
 	}
 	switch lang {
-	case "python", "go", "node":
+	case "ts", "typescript":
+		lang = "ts"
+	case "python":
 	default:
-		return "", fmt.Errorf("lang must be python, go, or node")
+		return "", fmt.Errorf("lang must be ts or python")
 	}
 	dir := opt.Dir
 	if dir == "" {
@@ -77,14 +82,13 @@ func Scaffold(opt Options) (string, error) {
 	switch lang {
 	case "python":
 		files["plugin.py"] = pythonSrc(name, kind, perm)
+		files["dap_plugin.py"] = pythonHelper()
 		files["test_protocol.py"] = pythonTest()
-	case "node":
-		files["plugin.js"] = nodeSrc(name, kind, perm)
-		files["test_protocol.mjs"] = nodeTest()
-	case "go":
-		files["go.mod"] = "module " + name + "\n\ngo 1.22\n"
-		files["main.go"] = goSrc(name, kind, perm)
-		files["main_test.go"] = goTest()
+	default:
+		files["package.json"] = tsPackage(name)
+		files["tsconfig.json"] = tsConfig()
+		files["src/index.ts"] = tsSrc(name, kind, perm)
+		files["test/protocol.test.mjs"] = tsTest()
 	}
 	if opt.UI {
 		files["ui/index.html"] = uiHTML(name)
@@ -105,7 +109,29 @@ func Scaffold(opt Options) (string, error) {
 			return "", err
 		}
 	}
+	if lang == "ts" {
+		if err := copySDK(filepath.Join(abs, "vendor", "plugin-sdk")); err != nil {
+			return "", err
+		}
+	}
 	return abs, nil
+}
+
+func copySDK(dst string) error {
+	return fs.WalkDir(typescript.Files, ".", func(rel string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, filepath.FromSlash(rel))
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		b, err := typescript.Files.ReadFile(rel)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, b, 0o644)
+	})
 }
 
 // SuggestType picks a starting type from a plain-language description.
@@ -130,12 +156,11 @@ func permissionName(name string) string {
 }
 
 func manifestYAML(name, kind, lang, desc, perm string, ui bool) string {
-	entry := "plugin.py"
-	switch lang {
-	case "node":
-		entry = "plugin.js"
-	case "go":
-		entry = "\n  - go\n  - run\n  - ."
+	entry := "dist/index.js"
+	runtime := "runtime: node\n"
+	if lang == "python" {
+		entry = "plugin.py"
+		runtime = ""
 	}
 	sched := "schedule:\n  every: 1h\n"
 	mode := "ask_first"
@@ -152,6 +177,7 @@ func manifestYAML(name, kind, lang, desc, perm string, ui bool) string {
 		"type: " + kind + "\n" +
 		"interface: dap.plugin.v1\n" +
 		"description: " + yamlString(desc) + "\n" +
+		runtime +
 		"entrypoint: " + entry + "\n" +
 		"permissions:\n" +
 		"  - name: " + perm + "\n" +

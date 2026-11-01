@@ -1,0 +1,42 @@
+name: inbox-followups
+version: 0.1.0
+min_dap_version: 0.1.0
+type: watcher
+interface: dap.plugin.v1
+description: Follow-ups you owe, and threads waiting on someone else. Nothing sends without approval.
+entrypoint: inbox_followups.py
+permissions:
+  - name: mail.read
+    mode: allowed
+    description: Read threads to see who is waiting
+  - name: mail.draft
+    mode: allowed
+    description: Prepare a follow-up draft
+  - name: mail.send
+    mode: ask_first
+    description: Send a follow-up as you
+provides:
+  - follow-ups
+config:
+  - key: wait_hours
+    type: number
+    description: How long a thread sits before it needs you
+    default: 24
+  - key: signature
+    type: string
+    description: Name signed on drafts
+    default: Vic
+  - key: skip_domains
+    type: string
+    description: Comma-separated domains that never get an auto draft
+    default: ""
+  - key: preview_rule
+    type: bool
+    description: Suggest a domain rule until you decide
+    default: true
+schedule:
+  every: 1h
+ui:
+  entry: ui/index.html
+  route: /plugins/inbox-followups/
+  title: Inbox follow-ups

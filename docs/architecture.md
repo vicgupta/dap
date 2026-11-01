@@ -37,13 +37,14 @@ The admin API used by the UI and the CLI, all under the admin token:
 
 | Method | Path |
 | --- | --- |
-| GET | `/api/home`, `/api/inbox`, `/api/activity`, `/api/guardrails`, `/api/plugins`, `/api/doctor`, `/api/approved` |
+| GET | `/api/home`, `/api/inbox`, `/api/activity`, `/api/guardrails`, `/api/plugins`, `/api/doctor`, `/api/approved`, `/api/connections` |
 | GET | `/api/context` and `/api/context?plugin=<name>` |
 | POST | `/api/inbox/{id}/approve`, `edit`, `reject`, `snooze` |
 | POST | `/api/guardrails` with `plugin`, `permission`, `decision` |
 | POST | `/api/plugins/install` with `path` and `approve` |
 | POST | `/api/plugins/{name}/remove`, `approve`, `run` |
 | POST | `/api/propose`, `/api/check`, `/api/log`, `/api/outcome`, `/api/tile` |
+| POST | `/api/connections/{provider}/setup`, `connect`, `disconnect` (`gmail`, `graph`, or `fake`) |
 | POST | `/api/create/scaffold`, `/api/create/run`, `/api/create/validate`, `/api/create/propose` |
 | GET | `/api/create/run/{id}` |
 | POST | `/api/create/run/{id}/cancel` |
@@ -66,6 +67,14 @@ Plugin API routes (suffixes of `api_base`, which is `http://127.0.0.1:<port>/v1/
 | POST | `/secret/set` | Requires declared `secrets.write` and decision `allowed` |
 | POST | `/secret/get` | Requires declared `secrets.read` and decision `allowed` |
 | POST | `/secret/delete` | Requires declared `secrets.write` and decision `allowed` |
+| GET | `/inbox` | This plugin's cards, including bodies |
+| POST | `/inbox/{id}/approve`, `edit`, `reject`, `snooze` | Same guardrails as the core inbox. The plugin token cannot touch another plugin's cards |
+| GET | `/mail/status` | Mailbox connection rows. No tokens |
+| GET | `/mail/threads` | Requires declared `mail.read` |
+| POST | `/mail/send` | Requires declared `mail.send`, effect `sends`, and a covering approved card |
+| POST | `/mail/undo` | Demo mailbox only |
+
+Mail tokens live in the host, service `dap.mail`. See [inbox-followups.md](inbox-followups.md).
 
 A missing or wrong bearer token is HTTP 401. Bodies are limited to 1 MiB.
 
@@ -81,4 +90,4 @@ Inter is bundled for the UI under the SIL Open Font License (`internal/web/stati
 
 ## What the core does not do
 
-DAP does not call Claude, Codex, or OpenCode. Doctor only reports whether those names are on `PATH`. DAP does not send operating-system notifications or email of its own. It does not ship a native window toolkit.
+DAP does not call Claude, Codex, or OpenCode. Doctor only reports whether those names are on `PATH`. DAP does not send operating-system notifications. It sends mail only when a plugin calls `/mail/send` and an approved card covers that send. It does not ship a native window toolkit.
