@@ -1,0 +1,6 @@
+/da
+/da.exe
+/dist/
+.dap/
+*.out
+coverage.txt
