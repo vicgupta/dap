@@ -71,6 +71,7 @@ A plugin with a `ui` block is served on its own `127.0.0.1` port. The core route
 - **Guardrails.** The baked-in rules, each permission's effective mode, and recent checks. A control can tighten a permission. It cannot loosen one.
 - **Plugins.** Review permissions in plain language, approve the install, see health, open a plugin UI, or remove a plugin.
 - **Connections.** Demo mailbox, Gmail, and Outlook. Setup is in [docs/inbox-followups.md](docs/inbox-followups.md).
+- **Quit.** Bottom of the sidebar. Stops scheduled agents, shuts plugins down, and exits. `da quit` does the same.
 
 ## Safety rules
 

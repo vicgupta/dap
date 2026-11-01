@@ -126,6 +126,32 @@ func (s *Store) copyLocked() State {
 	return out
 }
 
+// Flush writes state.json and fsyncs it. Shutdown calls this after plugins stop.
+func (s *Store) Flush() error {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.saveLocked(); err != nil {
+		return err
+	}
+	f, err := os.Open(s.path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	dir, err := os.Open(filepath.Dir(s.path))
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
+}
+
 func (s *Store) saveLocked() error {
 	b, err := json.MarshalIndent(s.state, "", "  ")
 	if err != nil {

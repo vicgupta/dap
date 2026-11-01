@@ -62,6 +62,21 @@ da run
 da run --addr 127.0.0.1:8787
 ```
 
+## `da quit`
+
+Stops a DAP that is already running. `da stop` is the same command. It reads `run.json` and `POST`s `/api/quit` with the admin token and `X-DAP-Request: quit`. That is the same shutdown as the Quit button and as Ctrl+C: the scheduler stops, in-flight `act` calls get up to 10 seconds, plugins receive `shutdown`, the ledger and state are flushed, `run.json` is removed, `dap.lock` is released, and the process exits 0.
+
+```bash
+da quit
+da stop
+```
+
+```json
+{ "ok": true }
+```
+
+If nothing is listening, the command exits `1` with `DAP is not running`. It does not start a server.
+
 ## `da doctor`
 
 Checks the data directory, ledger, secret backend, dependency order, each plugin's schedule and health, permission approval, and whether `claude`, `codex`, and `opencode` are on `PATH`.

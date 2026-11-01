@@ -296,6 +296,8 @@ def handle(method, params):
                 {"key": "phase", "label": "Phase", "value": state.get("phase") or "idle"},
             ]
         }
+    if method == "shutdown":
+        return {"ok": True}
     raise RuntimeError("unknown method %s" % method)
 
 

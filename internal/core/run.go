@@ -21,6 +21,11 @@ func (a *App) RunPlugin(name, trigger string) error {
 	if trigger == "" {
 		trigger = "manual"
 	}
+	end, err := a.beginCall(name, false)
+	if err != nil {
+		return err
+	}
+	defer end()
 	a.mutex(name).Lock()
 	defer a.mutex(name).Unlock()
 	if !a.host.Running(name) {
@@ -34,6 +39,9 @@ func (a *App) RunPlugin(name, trigger string) error {
 // Tick wakes snoozed cards and runs plugins whose schedule is due.
 // A late wake records a missed run and catches up once.
 func (a *App) Tick(now time.Time) {
+	if a.isStopping() {
+		return
+	}
 	a.wake(now)
 	snap := a.store.Snapshot()
 	names := make([]string, 0, len(snap.Plugins))
@@ -61,6 +69,11 @@ func (a *App) Tick(now time.Time) {
 			if err != nil || !d.Fire {
 				return
 			}
+			end, err := a.beginCall(name, false)
+			if err != nil {
+				return
+			}
+			defer end()
 			_ = a.store.Update(func(st *store.State) error {
 				p := st.Plugins[name]
 				if p == nil {

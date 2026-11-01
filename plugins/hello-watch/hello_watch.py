@@ -76,6 +76,8 @@ def handle(method, params):
                 {"key": "hellos", "label": "Hellos", "value": RT["acted"]},
             ]
         }
+    if method == "shutdown":
+        return {"ok": True}
     raise RuntimeError("unknown method %s" % method)
 
 

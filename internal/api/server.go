@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -23,12 +24,13 @@ import (
 
 // Server is the human-facing localhost site.
 type Server struct {
-	App   *core.App
-	Addr  string
-	ln    net.Listener
-	srv   *http.Server
-	mu    sync.Mutex
-	boxes map[string]*sandbox
+	App    *core.App
+	Addr   string
+	ln     net.Listener
+	srv    *http.Server
+	mu     sync.Mutex
+	boxes  map[string]*sandbox
+	onQuit func()
 }
 
 // New builds a server. Call Start to listen. The listener is forced onto loopback.
@@ -64,6 +66,10 @@ func (s *Server) Start() error {
 	s.SyncSandboxes()
 	return nil
 }
+
+// OnQuit is called after POST /api/quit has written its response.
+// da serve uses it for the same shutdown path as SIGINT and SIGTERM.
+func (s *Server) OnQuit(fn func()) { s.onQuit = fn }
 
 // URL is the base URL of the human interface.
 func (s *Server) URL() string {
@@ -127,6 +133,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/log", s.auth(s.log))
 	mux.HandleFunc("POST /api/outcome", s.auth(s.outcome))
 	mux.HandleFunc("POST /api/tile", s.auth(s.tile))
+	mux.HandleFunc("GET /api/quit-status", s.auth(s.quitStatus))
+	mux.HandleFunc("POST /api/quit", s.auth(s.quit))
 	mux.HandleFunc("GET /plugins/{name}/", s.pluginRedirect)
 	mux.HandleFunc("GET /plugins/{name}", s.pluginRedirect)
 	return mux
@@ -475,6 +483,41 @@ func (s *Server) outcome(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "card": card})
 }
 
+func (s *Server) quitStatus(w http.ResponseWriter, r *http.Request) {
+	st := s.App.QuitStatus()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":               true,
+		"running":          st.Running,
+		"plugins_running":  st.PluginsRunning,
+		"inflight_actions": st.InflightActions,
+		"acting":           st.Acting,
+	})
+}
+
+func (s *Server) quit(w http.ResponseWriter, r *http.Request) {
+	if !loopbackPeer(r) {
+		writeJSON(w, http.StatusForbidden, map[string]any{"ok": false, "error": "quit is only available on this machine"})
+		return
+	}
+	if !quitCSRF(r) {
+		writeJSON(w, http.StatusForbidden, map[string]any{"ok": false, "error": "quit must be a same-origin POST"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	fn := s.onQuit
+	if fn == nil {
+		return
+	}
+	go func() {
+		// Let the response leave before serve starts closing listeners.
+		time.Sleep(150 * time.Millisecond)
+		fn()
+	}()
+}
+
 func (s *Server) tile(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Plugin string `json:"plugin"`
@@ -532,6 +575,49 @@ func secure(w http.ResponseWriter, origin string) {
 		csp += "; frame-src http://127.0.0.1:* http://localhost:*"
 	}
 	w.Header().Set("Content-Security-Policy", csp)
+}
+
+func loopbackPeer(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	return loopbackHost(host)
+}
+
+func loopbackHost(host string) bool {
+	host = strings.Trim(host, "[]")
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func loopbackOrigin(origin string) bool {
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return false
+	}
+	return loopbackHost(u.Hostname())
+}
+
+// quitCSRF rejects cross-site form posts. The admin token is a bearer header,
+// and browsers will not attach a custom header on a simple cross-site POST.
+func quitCSRF(r *http.Request) bool {
+	if r.Header.Get("X-DAP-Request") != "quit" {
+		return false
+	}
+	if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+		return false
+	}
+	if origin := r.Header.Get("Origin"); origin != "" && !loopbackOrigin(origin) {
+		return false
+	}
+	return true
 }
 
 func tokenOK(r *http.Request, token string) bool {

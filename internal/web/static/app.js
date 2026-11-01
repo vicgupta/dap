@@ -18,6 +18,9 @@ const state = {
   installPath: "",
   preview: null,
   data: {},
+  quitConfirm: null,
+  quitPending: false,
+  quitting: false,
 };
 
 const ICONS = {
@@ -27,6 +30,7 @@ const ICONS = {
   guard: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2.2 13 4.2v3.6c0 3-2.1 4.8-5 6-2.9-1.2-5-3-5-6V4.2L8 2.2Z"/></svg>',
   plugins: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 2.5h4V5H6zM3 6.5h4V9H3zM9 6.5h4V9H9zM6 10h4v2.5H6z"/><path d="M8 5v1.5M5 9v1.5h6V9"/></svg>',
   connections: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="4" cy="8" r="1.6"/><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="11" r="1.6"/><path d="M5.5 7.4 10.4 5.6M5.5 8.6l4.9 2"/></svg>',
+  power: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M8 2.2v5.2"/><path d="M5.05 3.7a5 5 0 1 0 5.9 0"/></svg>',
 };
 
 function routeFromHash() {
@@ -42,12 +46,14 @@ function esc(s) {
 }
 
 async function api(path, opts = {}) {
+  const headers = {
+    Authorization: "Bearer " + DAP.token,
+    "Content-Type": "application/json",
+    ...(opts.headers || {}),
+  };
   const res = await fetch(path, {
     method: opts.method || "GET",
-    headers: {
-      Authorization: "Bearer " + DAP.token,
-      "Content-Type": "application/json",
-    },
+    headers,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
@@ -99,7 +105,7 @@ function shell(inner) {
           ${item("plugins", "Plugins", "plugins")}
           ${item("connections", "Connections", "connections")}
         </nav>
-        <div class="side-foot"><strong>Running locally</strong>All data stays on this machine.</div>
+        ${quitControl()}
       </aside>
       <main class="main">
         ${state.error ? `<div class="banner">${esc(state.error)}</div>` : ""}
@@ -107,6 +113,95 @@ function shell(inner) {
         ${inner}
       </main>
     </div>`;
+}
+
+function quitNote(st) {
+  const acting = Number(st.acting) || 0;
+  const inflight = Number(st.inflight_actions) || 0;
+  if (acting > 0 && inflight > 0) {
+    return "An approved action is still executing, and a plugin action is in progress. DAP will wait a few seconds for it to finish.";
+  }
+  if (acting > 0) {
+    return "An approved action is still executing. DAP will wait a few seconds for it to finish.";
+  }
+  if (inflight > 0) {
+    return "A plugin action is still in progress. DAP will wait a few seconds for it to finish.";
+  }
+  return "";
+}
+
+function quitControl() {
+  const note = state.quitConfirm && state.quitConfirm.note
+    ? `<p class="quit-note">${esc(state.quitConfirm.note)}</p>` : "";
+  const dialog = state.quitConfirm ? `
+    <div class="quit-dialog" role="dialog" aria-modal="true" aria-labelledby="quit-title" aria-describedby="quit-copy" tabindex="-1">
+      <h2 id="quit-title">Quit DAP?</h2>
+      <p id="quit-copy">Scheduled agents stop running until you open DAP again.</p>
+      ${note}
+      <div class="inline">
+        <button type="button" class="primary" data-act="confirm-quit">Quit</button>
+        <button type="button" class="quiet" data-act="cancel-quit">Cancel</button>
+      </div>
+    </div>` : "";
+  return `
+    <div class="sidebar-end">
+      <div class="side-foot"><strong>Running locally</strong>All data stays on this machine.</div>
+      <div class="quit-wrap">
+        ${dialog}
+        <button type="button" class="quit-btn" data-act="quit" aria-label="Quit DAP">${ICONS.power}<span>Quit</span></button>
+      </div>
+    </div>`;
+}
+
+function focusEl(selector) {
+  const el = document.querySelector(selector);
+  if (!el) return;
+  try { el.focus({ focusVisible: true }); } catch (e) { el.focus(); }
+}
+
+async function beginQuit() {
+  if (state.quitting || state.quitPending) return;
+  state.quitPending = true;
+  state.error = "";
+  let st = {};
+  try {
+    st = await api("/api/quit-status");
+  } catch (err) {
+    state.quitPending = false;
+    state.error = err.message;
+    render();
+    return;
+  }
+  const acting = Number(st.acting) || 0;
+  const inflight = Number(st.inflight_actions) || 0;
+  if (!st.running && acting === 0 && inflight === 0) {
+    await doQuit();
+    return;
+  }
+  state.quitConfirm = { note: quitNote(st) };
+  state.quitPending = false;
+  render();
+  focusEl("[data-act=confirm-quit]");
+}
+
+async function doQuit() {
+  state.quitting = true;
+  state.quitPending = false;
+  try {
+    await api("/api/quit", { method: "POST", body: {}, headers: { "X-DAP-Request": "quit" } });
+  } catch (err) {
+    // The process may close the socket as it exits.
+  }
+  showQuitPage();
+}
+
+function showQuitPage() {
+  state.quitting = true;
+  document.title = "DAP has quit";
+  document.body.innerHTML = `<main class="quit-page"><div><h1>DAP has quit.</h1><p>You can close this window.</p></div></main>`;
+  const closeWin = () => { try { window.close(); } catch (e) {} };
+  closeWin();
+  setTimeout(closeWin, 200);
 }
 
 function homeView() {
@@ -371,7 +466,9 @@ function connectionsView() {
 }
 
 function render() {
+  if (state.quitting) return;
   const root = document.getElementById("app");
+  if (!root) return;
   const html = {
     home: homeView,
     inbox: inboxView,
@@ -386,6 +483,7 @@ function render() {
 }
 
 async function refresh() {
+  if (state.quitting || state.quitConfirm || state.quitPending) return;
   try {
     if (state.route === "home" || !state.data.home) {
       state.data.home = await api("/api/home");
@@ -481,6 +579,14 @@ document.addEventListener("click", (ev) => {
       method: "POST",
       body: { client_id: input ? input.value.trim() : "", calendar: !!(cal && cal.checked && provider === "graph") },
     }));
+  } else if (actName === "quit") {
+    beginQuit();
+  } else if (actName === "cancel-quit") {
+    state.quitConfirm = null;
+    render();
+    focusEl("[data-act=quit]");
+  } else if (actName === "confirm-quit") {
+    doQuit();
   } else if (actName === "confirm-install") {
     act("install", async () => {
       await api("/api/plugins/install", { method: "POST", body: { path: state.installPath, approve: true } });
@@ -523,6 +629,14 @@ document.addEventListener("change", (ev) => {
 });
 
 document.addEventListener("keydown", (ev) => {
+  if (state.quitConfirm) {
+    if (ev.key === "Escape") {
+      state.quitConfirm = null;
+      render();
+      focusEl("[data-act=quit]");
+    }
+    return;
+  }
   if (state.route !== "inbox") return;
   const tag = (ev.target.tagName || "").toLowerCase();
   if (tag === "input" || tag === "textarea" || tag === "select") return;
@@ -553,14 +667,17 @@ document.addEventListener("keydown", (ev) => {
 });
 
 window.addEventListener("hashchange", () => {
+  if (state.quitting) return;
   state.route = routeFromHash();
   state.mode = null;
+  state.quitConfirm = null;
   refresh();
 });
 
 refresh();
 setInterval(() => {
   if (document.hidden) return;
+  if (state.quitting || state.quitConfirm || state.quitPending) return;
   if (state.mode && (state.mode.type === "edit" || state.mode.type === "reject" || state.mode.type === "snooze")) return;
   const tag = (document.activeElement && document.activeElement.tagName || "").toLowerCase();
   if (tag === "input" || tag === "textarea" || tag === "select") return;

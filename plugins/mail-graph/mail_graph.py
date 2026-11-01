@@ -33,6 +33,8 @@ def handle(method, params):
         raise RuntimeError("Outlook does not send on its own. Approve a follow-up card.")
     if method == "report":
         return {"metrics": [{"key": "provider", "label": "Provider", "value": "graph"}]}
+    if method == "shutdown":
+        return {"ok": True}
     raise RuntimeError("unknown method %s" % method)
 
 
