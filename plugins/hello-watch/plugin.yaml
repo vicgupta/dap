@@ -1,0 +1,15 @@
+name: hello-watch
+version: 0.1.0
+min_dap_version: 0.1.0
+type: watcher
+interface: dap.plugin.v1
+description: A small watcher that proposes a hello on a schedule.
+entrypoint: hello_watch.py
+permissions:
+  - name: demo.greet
+    mode: ask_first
+    description: Record a hello in the decision inbox
+provides:
+  - hellos
+schedule:
+  every: 15m

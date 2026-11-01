@@ -1,0 +1,47 @@
+name: workflow
+version: 0.1.0
+min_dap_version: 0.1.0
+type: workflow
+interface: dap.plugin.v1
+description: Run an ordered list of steps on a schedule. Sending, spending, or deleting pauses for approval.
+entrypoint: workflow.py
+permissions:
+  - name: workflow.run
+    mode: allowed
+    description: Run a step that does not send, spend, or delete
+  - name: workflow.rules
+    mode: ask_first
+    description: Change this workflow's steps or schedule
+  - name: share.team
+    mode: ask_first
+    description: Share a note with the team
+provides:
+  - step-runs
+config:
+  - key: every
+    type: duration
+    description: How often the workflow runs
+    default: 1h
+  - key: steps
+    type: list
+    description: Ordered steps. A step that sends, spends, or deletes waits in the inbox.
+    default:
+      - id: digest
+        title: Pull the digest
+        detail: Gather the latest notes into one summary.
+        effects: []
+      - id: draft
+        title: Draft the team note
+        detail: Draft a short note to the team. This sends, so it waits for you.
+        effects:
+          - sends
+      - id: save
+        title: Save the summary
+        detail: Keep a local copy of the summary.
+        effects: []
+schedule:
+  every: 1h
+ui:
+  entry: ui/index.html
+  route: /plugins/workflow/
+  title: Step editor
