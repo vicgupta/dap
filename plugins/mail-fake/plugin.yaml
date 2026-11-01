@@ -1,0 +1,19 @@
+name: mail-fake
+version: 0.1.0
+min_dap_version: 0.1.0
+type: capability
+interface: dap.plugin.v1
+description: Demo mailbox with example threads. No real account and no token.
+entrypoint: mail_fake.py
+permissions:
+  - name: mail.read
+    mode: allowed
+    description: Read the demo mailbox
+  - name: mail.draft
+    mode: allowed
+    description: Prepare a demo draft
+  - name: mail.send
+    mode: ask_first
+    description: Send a demo message after you approve it
+provides:
+  - demo-mail

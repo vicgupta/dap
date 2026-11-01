@@ -253,6 +253,45 @@ The optional web UI is a folder of static files. `ui.entry` is the HTML file. DA
 - `plugins/hello-watch` — a watcher. Each run proposes "Say hello". Nothing is sent. Approving writes the result to the ledger.
 - `plugins/workflow` — a workflow. "Pull the digest" runs on its own. "Draft the team note" sends, so it waits. "Save the summary" runs after you approve. Both plugins run as separate processes at the same time.
 
+## Inbox follow-ups
+
+`inbox-followups` watches connected mailboxes for threads you owe a reply to and threads that are waiting on someone else. It proposes a draft as a decision card. Approving the card is what sends it. Dismiss, edit, and snooze stay in the plugin's own view and in the core inbox.
+
+```bash
+./da plugin install ./plugins/mail-fake --approve
+./da plugin install ./plugins/mail-gmail --approve
+./da plugin install ./plugins/mail-graph --approve
+./da plugin install ./plugins/inbox-followups --approve
+./da run
+```
+
+Open Connections. **Demo mailbox** connects with one click and needs no account. Gmail and Outlook need a public client id, which you paste there. DAP stores tokens in the OS keychain (or the 0600 file when the keychain is not available). The plugin process and `da` commands never receive the access token or the refresh token. They call `mail.read` and `mail.send` on the host. `mail.send` still requires an approved card, and the send scope is requested from Google or Microsoft only on the first approved send.
+
+`da doctor` reports each installed mailbox: token present or not, whether send scope is granted, whether refresh works, and any throttle window.
+
+### Gmail
+
+1. In Google Cloud Console, create a project and enable the Gmail API.
+2. Configure the OAuth consent screen. Scopes you will use: `gmail.readonly`, `gmail.compose`, and later `gmail.send`.
+3. Create an OAuth client of type **Desktop app**. Copy the client id. Do not put a client secret in the repo or in `plugin.yaml`. This flow is PKCE and does not use a secret.
+4. Desktop clients accept a loopback redirect (`http://127.0.0.1` with an ephemeral port). If the console asks for a redirect URI, add `http://127.0.0.1`.
+5. On the Connections page, save the client id and press Connect. Sign in inside Google's window. DAP never sees the password.
+6. The first time you approve a follow-up, Google is asked for `gmail.send` as well. Until that consent succeeds, DAP will not call send. Google's `gmail.compose` scope is also allowed to send at the API level; DAP still waits for the incremental `gmail.send` grant.
+
+Google restricted-scope verification is not part of this setup. It is parked.
+
+### Outlook (personal Microsoft accounts)
+
+1. In Microsoft Entra, register an application.
+2. Supported account types: **Personal Microsoft accounts only**.
+3. Add a **Mobile and desktop applications** platform. Set the redirect URI to `http://localhost`. Turn on **Allow public client flows**.
+4. Do not create a client secret. This is a public client with PKCE.
+5. API permissions to add over time: `User.Read`, `Mail.ReadWrite`, `offline_access` at sign-in. `Mail.Send` is requested only when the first send is approved. `Calendars.Read` stays off unless you check it on the Connections page.
+6. Paste the application (client) id into Connections and press Connect. Sign-in, including MFA, happens in Microsoft's window. DAP does not read Outlook's stored credentials or tokens.
+7. On Windows, macOS, and Linux the sign-in uses the system browser and a localhost redirect, which is the MSAL public-client pattern. A native Web Account Manager broker is not linked in this build, so Windows uses that same browser flow.
+
+Polling uses Graph delta queries. Threads are grouped by `conversationId`. A 429 or 503 honors `Retry-After`. A short wait is retried once. A long wait is recorded and shown by doctor instead of blocking the laptop. Disconnect on the Connections page deletes the token from the keychain.
+
 ## Development
 
 ```bash
@@ -260,7 +299,7 @@ go test ./...
 go build -o da ./cmd/da
 ```
 
-Tests cover manifest validation (including the shorthand from the design sketches), dependency order, permission decisions, guardrail overrides, the send/spend/delete rule, the scheduler (cron, weekdays, missed-run catch-up), the append-only ledger, the secret file store, the JSON-RPC lifecycle, both example plugins running together, approval end to end, and the CLI.
+Tests cover manifest validation, permission decisions, guardrails, the scheduler, the ledger, plugin lifecycle, Gmail and Graph clients against mocked HTTP, the PKCE sign-in and incremental send scope, and the approval-gated demo send.
 
 ## Layout
 
@@ -268,11 +307,16 @@ Tests cover manifest validation (including the shorthand from the design sketche
 cmd/da                  CLI entry
 internal/core           scheduler, inbox, guardrails, host wiring
 internal/pluginhost     process isolation and dap.plugin.v1
+internal/mail           token custody and Gmail, Graph, and demo clients
 internal/manifest       plugin.yaml
 internal/api            localhost UI and plugin sandbox
 internal/web            embedded UI
 plugins/hello-watch
 plugins/workflow
+plugins/inbox-followups
+plugins/mail-gmail
+plugins/mail-graph
+plugins/mail-fake
 ```
 
 Inter is bundled under the SIL Open Font License (`internal/web/static/fonts/OFL.txt`).

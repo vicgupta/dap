@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"encoding/json"
 	"os/exec"
 	"path/filepath"
@@ -365,6 +366,9 @@ func (a *App) Doctor() DoctorReport {
 		}
 	}
 	add(DoctorCheck{Name: "agents", OK: true, Detail: strings.Join(parts, "; "), Level: "info"})
+	for _, c := range a.MailChecks(context.Background()) {
+		add(c)
+	}
 	return rep
 }
 
@@ -405,6 +409,10 @@ type PluginContext struct {
 	State     json.RawMessage   `json:"state"`
 	OpenCards []CardBrief       `json:"open_cards"`
 	Health    model.Health      `json:"health"`
+	LastRun   *time.Time        `json:"last_run,omitempty"`
+	NextRun   *time.Time        `json:"next_run,omitempty"`
+	Missed    string            `json:"missed,omitempty"`
+	Pending   int               `json:"pending"`
 }
 
 // Context returns one plugin's config, scratch state, and open cards.
@@ -417,14 +425,28 @@ func (a *App) Context(plugin string) (PluginContext, error) {
 	if err != nil {
 		return PluginContext{}, err
 	}
-	return PluginContext{
+	ctx := PluginContext{
 		Plugin:    plugin,
 		Config:    rec.Config,
 		Schedule:  rec.Schedule,
 		State:     raw,
 		OpenCards: a.pluginCards(plugin, true),
 		Health:    a.runtimeOf(plugin).Health,
-	}, nil
+		LastRun:   rec.Run.LastRun,
+	}
+	if !rec.Run.NextRun.IsZero() {
+		t := rec.Run.NextRun
+		ctx.NextRun = &t
+	}
+	if rec.Run.MissedCount > 0 && rec.Run.MissedScheduled != nil {
+		ctx.Missed = missedText(rec.Run.MissedCount, *rec.Run.MissedScheduled, rec.Run.MissedReason)
+	}
+	for _, c := range a.store.Snapshot().Cards {
+		if c.Plugin == plugin && c.Status == model.StatusPending {
+			ctx.Pending++
+		}
+	}
+	return ctx, nil
 }
 
 // PluginCards lists cards for one plugin. openOnly keeps cards that still block a workflow.

@@ -26,11 +26,12 @@ const ICONS = {
   activity: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 8h2.2l1.4-3.2L8 12l1.6-4H14"/></svg>',
   guard: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2.2 13 4.2v3.6c0 3-2.1 4.8-5 6-2.9-1.2-5-3-5-6V4.2L8 2.2Z"/></svg>',
   plugins: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 2.5h4V5H6zM3 6.5h4V9H3zM9 6.5h4V9H9zM6 10h4v2.5H6z"/><path d="M8 5v1.5M5 9v1.5h6V9"/></svg>',
+  connections: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="4" cy="8" r="1.6"/><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="11" r="1.6"/><path d="M5.5 7.4 10.4 5.6M5.5 8.6l4.9 2"/></svg>',
 };
 
 function routeFromHash() {
   const h = (location.hash || "#/").replace(/^#\/?/, "");
-  if (["inbox", "activity", "guardrails", "plugins"].includes(h)) return h;
+  if (["inbox", "activity", "guardrails", "plugins", "connections"].includes(h)) return h;
   return "home";
 }
 
@@ -96,6 +97,7 @@ function shell(inner) {
           ${item("activity", "Activity", "activity")}
           ${item("guardrails", "Guardrails", "guard")}
           ${item("plugins", "Plugins", "plugins")}
+          ${item("connections", "Connections", "connections")}
         </nav>
         <div class="side-foot"><strong>Running locally</strong>All data stays on this machine.</div>
       </aside>
@@ -321,6 +323,53 @@ function pluginsView() {
   `);
 }
 
+function connectionsView() {
+  const data = state.data.connections;
+  if (!data) return shell(`<p class="sub">Loading…</p>`);
+  const cards = (data.connections || []).map((c) => {
+    const dot = c.connected ? "ok" : "degraded";
+    const scopes = (c.scopes || []).join(", ") || "—";
+    const throttle = c.throttle && c.throttle.active ? `Throttled until ${esc(fmtTime(c.throttle.until))}.` : "";
+    const client = c.provider === "fake" ? "" : `
+      <label class="field">Client ID
+        <input data-client="${esc(c.provider)}" type="text" value="${esc(c.client_id || "")}" placeholder="Public client id" />
+      </label>`;
+    const calendar = c.provider === "graph" ? `
+      <label class="sub"><input data-calendar type="checkbox" ${c.calendar_enabled ? "checked" : ""} /> Calendars.Read (off unless you need it)</label>` : "";
+    return `<article class="card plugin-block">
+      <header class="row">
+        <span class="dot ${dot}"></span>
+        <div style="flex:1">
+          <h2 style="margin:0">${esc(c.label)}</h2>
+          <p class="sub">${c.connected ? "Connected" : "Not connected"}${c.account ? " · " + esc(c.account) : ""} · ${esc(c.broker || "")}</p>
+      </div>
+        ${c.installed ? `<span class="pill allowed">Installed</span>` : `<span class="pill">Not installed</span>`}
+      </header>
+      ${c.refresh_detail && c.refresh_detail !== "not connected" ? `<p class="sub">${esc(c.refresh_detail)}</p>` : ""}
+      <p class="sub">Scopes: ${esc(scopes)}</p>
+      ${throttle ? `<p class="missed">${throttle}</p>` : ""}
+      ${client}
+      ${calendar}
+      <div class="actions" style="margin-top:12px">
+        ${c.provider !== "fake" ? `<button class="ghost" data-act="save-connection" data-provider="${esc(c.provider)}">Save client id</button>` : ""}
+        ${c.connected
+          ? `<button class="ghost" data-act="disconnect" data-provider="${esc(c.provider)}">Disconnect</button>`
+          : `<button class="primary" data-act="connect" data-provider="${esc(c.provider)}">Connect</button>`}
+      </div>
+    </article>`;
+  }).join("");
+  const agents = (data.agents || []).map((a) => `<li>${esc(a.name)} · ${a.found ? esc(a.path) : "not on PATH"}</li>`).join("");
+  return shell(`
+    <header class="page-head"><div>
+      <h1>Connections</h1>
+      <p>Mail tokens stay in the OS keychain. Plugins never see them. You sign in inside Google or Microsoft’s window.</p>
+    </div></header>
+    <div class="stack">${cards}</div>
+    <h2 class="section-title">Coding agents</h2>
+    <ul class="card plugin-block">${agents}</ul>
+  `);
+}
+
 function render() {
   const root = document.getElementById("app");
   const html = {
@@ -329,6 +378,7 @@ function render() {
     activity: activityView,
     guardrails: guardView,
     plugins: pluginsView,
+    connections: connectionsView,
   }[state.route]();
   root.innerHTML = html;
   const selected = root.querySelector(".decision.selected");
@@ -344,6 +394,7 @@ async function refresh() {
     if (state.route === "activity") state.data.activity = await api("/api/activity");
     if (state.route === "guardrails") state.data.guard = await api("/api/guardrails");
     if (state.route === "plugins") state.data.plugins = await api("/api/plugins");
+    if (state.route === "connections") state.data.connections = await api("/api/connections");
     if (state.route !== "home") {
       state.data.home = await api("/api/home");
     }
@@ -418,6 +469,18 @@ document.addEventListener("click", (ev) => {
   } else if (actName === "cancel-install") {
     state.preview = null;
     render();
+  } else if (actName === "connect") {
+    act("connect", () => api("/api/connections/" + el.dataset.provider + "/connect", { method: "POST", body: {} }));
+  } else if (actName === "disconnect") {
+    act("disconnect", () => api("/api/connections/" + el.dataset.provider + "/disconnect", { method: "POST", body: {} }));
+  } else if (actName === "save-connection") {
+    const provider = el.dataset.provider;
+    const input = document.querySelector(`[data-client="${provider}"]`);
+    const cal = document.querySelector("[data-calendar]");
+    act("setup", () => api("/api/connections/" + provider + "/setup", {
+      method: "POST",
+      body: { client_id: input ? input.value.trim() : "", calendar: !!(cal && cal.checked && provider === "graph") },
+    }));
   } else if (actName === "confirm-install") {
     act("install", async () => {
       await api("/api/plugins/install", { method: "POST", body: { path: state.installPath, approve: true } });
