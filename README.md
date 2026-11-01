@@ -11,6 +11,60 @@ Core version: `0.1.0` (`internal/version`). Go `1.22` or newer.
 | [docs/plugins.md](docs/plugins.md) | `plugin.yaml`, the five-step interface, authoring in any language |
 | [docs/runtime.md](docs/runtime.md) | Scheduler, inbox, guardrails, ledger, secrets, doctor, data directory, limitations |
 | [docs/inbox-followups.md](docs/inbox-followups.md) | Follow-ups watcher, Connections, Gmail and Outlook sign-in |
+| [docs/release.md](docs/release.md) | Release install, Gatekeeper, SmartScreen, checksums |
+
+## Install the macOS pre-release
+
+[v0.1.0-alpha.1](https://github.com/vicgupta/dap/releases/tag/v0.1.0-alpha.1) is a private GitHub pre-release: Apple Silicon, Intel, and a universal `DAP.app`, plus `da` CLI tarballs. The repo stays private, so these links open only when you are logged into GitHub.
+
+One-time:
+
+```bash
+gh auth login
+```
+
+Then:
+
+```bash
+gh release download v0.1.0-alpha.1 --repo vicgupta/dap --pattern install.sh && sh install.sh
+```
+
+`install.sh` uses that `gh` login. It checks SHA256, installs `DAP.app` and `da`, and clears the quarantine flag. Double-click `DAP.app` to run `da run`. Data stays in `~/.dap` (or `$DAP_HOME`).
+
+Direct downloads:
+
+| File | Use |
+| --- | --- |
+| [DAP-0.1.0-alpha.1-macos-arm64.zip](https://github.com/vicgupta/dap/releases/download/v0.1.0-alpha.1/DAP-0.1.0-alpha.1-macos-arm64.zip) | Apple Silicon app |
+| [DAP-0.1.0-alpha.1-macos-amd64.zip](https://github.com/vicgupta/dap/releases/download/v0.1.0-alpha.1/DAP-0.1.0-alpha.1-macos-amd64.zip) | Intel app |
+| [DAP-0.1.0-alpha.1-macos-universal.zip](https://github.com/vicgupta/dap/releases/download/v0.1.0-alpha.1/DAP-0.1.0-alpha.1-macos-universal.zip) | Both CPUs |
+| [da-0.1.0-alpha.1-darwin-arm64.tar.gz](https://github.com/vicgupta/dap/releases/download/v0.1.0-alpha.1/da-0.1.0-alpha.1-darwin-arm64.tar.gz) | Apple Silicon CLI |
+| [da-0.1.0-alpha.1-darwin-amd64.tar.gz](https://github.com/vicgupta/dap/releases/download/v0.1.0-alpha.1/da-0.1.0-alpha.1-darwin-amd64.tar.gz) | Intel CLI |
+| [da-0.1.0-alpha.1-darwin-universal.tar.gz](https://github.com/vicgupta/dap/releases/download/v0.1.0-alpha.1/da-0.1.0-alpha.1-darwin-universal.tar.gz) | Universal CLI |
+| [checksums.txt](https://github.com/vicgupta/dap/releases/download/v0.1.0-alpha.1/checksums.txt) | SHA256 |
+
+Gatekeeper, checksum checks, and the example plugins: [docs/release.md](docs/release.md).
+
+The same `gh release download` command works for any single file:
+
+```bash
+gh release download v0.1.0-alpha.1 --repo vicgupta/dap --pattern DAP-0.1.0-alpha.1-macos-arm64.zip
+```
+
+## Linux and Windows
+
+v0.1.0-alpha.1 does not include Linux or Windows archives. After this packaging change is on `main`, the next `v*` tag builds them. `install.sh` on Linux and `install.ps1` on Windows use `gh release download` and check SHA256. Neither script embeds a token.
+
+```bash
+gh release download <tag> --repo vicgupta/dap --pattern install.sh && sh install.sh
+```
+
+```powershell
+gh release download <tag> --repo vicgupta/dap --pattern install.ps1
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+Those tags publish `da-<version>-linux-amd64.tar.gz`, `da-<version>-linux-arm64.tar.gz`, `dap_<version>_amd64.deb` and the arm64 deb (Debian version uses `~` in place of the pre-release hyphen), and `DAP-<version>-windows-amd64.zip`. Names and SmartScreen steps are in [docs/release.md](docs/release.md).
 
 ## Run
 
