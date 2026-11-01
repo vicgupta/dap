@@ -107,6 +107,8 @@ The UI:
 - **Guardrails** — the baked-in rules, each permission, and recent checks. You can tighten a permission to never.
 - **Plugins** — install (permissions are shown in plain language before anything is installed), health, and the plugin's web UI.
 
+The top bar has a theme control on every screen: sun for Light, moon for Dark, monitor for System. System is the default. It follows the OS (`prefers-color-scheme`) and updates when that setting changes. The choice is stored in the browser (`localStorage` key `dap.theme`) and in `config.json` (`theme`), and the page sets `data-theme` before the stylesheet loads. See [docs/theme.md](docs/theme.md).
+
 `workflow` includes a step editor. Saving it creates a change card. The new steps apply only after you approve that card. A step marked sends, spends, or deletes pauses in the inbox; the steps before it run.
 
 ## CLI
@@ -246,7 +248,7 @@ Base URL and token come from `initialize`. Send `Authorization: Bearer <token>`.
 
 A call the manifest did not declare is denied. Pass `card_id` only for a card of this plugin that is approved (or currently being acted on) and whose effects cover the call.
 
-The optional web UI is a folder of static files. `ui.entry` is the HTML file. DAP injects `<meta name="dap-token">`, `dap-api`, `dap-inbox`, and `dap-plugin`. Talk to `dap-api` (`/api/...`) with the token. See `plugins/workflow/ui` for a working editor.
+The optional web UI is a folder of static files. `ui.entry` is the HTML file. DAP injects `<meta name="dap-token">`, `dap-api`, `dap-inbox`, `dap-plugin`, and `dap-theme`. Talk to `dap-api` (`/api/...`) with the token. The page is a separate origin. Honor the theme with `?theme=`, `data-theme`, and the sandbox's `/theme.css` and `/theme-boot.js` (load the script before any stylesheet). Details are in [docs/theme.md](docs/theme.md). `plugins/workflow/ui` is a working editor that does this.
 
 ## Examples
 

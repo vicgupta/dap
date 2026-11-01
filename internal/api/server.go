@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/vicgupta/dap/internal/core"
 	"github.com/vicgupta/dap/internal/guardrails"
 	"github.com/vicgupta/dap/internal/model"
+	"github.com/vicgupta/dap/internal/theme"
 	"github.com/vicgupta/dap/internal/web"
 )
 
@@ -96,10 +98,14 @@ func (s *Server) Handler() http.Handler {
 	static, _ := fs.Sub(web.Static, "static")
 	fonts, _ := fs.Sub(static, "fonts")
 	mux.Handle("GET /fonts/", http.StripPrefix("/fonts/", http.FileServer(http.FS(fonts))))
+	mux.HandleFunc("GET /theme.css", file(static, "theme.css"))
+	mux.HandleFunc("GET /theme-boot.js", file(static, "theme-boot.js"))
 	mux.HandleFunc("GET /app.css", file(static, "app.css"))
 	mux.HandleFunc("GET /app.js", file(static, "app.js"))
 	mux.HandleFunc("GET /favicon.svg", file(static, "favicon.svg"))
 	mux.HandleFunc("GET /{$}", s.index)
+	mux.HandleFunc("GET /api/settings", s.auth(s.getSettings))
+	mux.HandleFunc("PUT /api/settings", s.auth(s.putSettings))
 	mux.HandleFunc("GET /api/home", s.auth(s.home))
 	mux.HandleFunc("GET /api/inbox", s.auth(s.inbox))
 	mux.HandleFunc("POST /api/inbox/{id}/approve", s.auth(s.approve))
@@ -133,9 +139,11 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing ui", http.StatusInternalServerError)
 		return
 	}
+	mode := s.App.Theme()
 	boot := `<meta name="dap-token" content="` + s.App.AdminToken() + `" />` +
-		`<meta name="dap-version" content="0.1.0" />`
-	html := bytes.Replace(b, []byte("<!--DAP_BOOT-->"), []byte(boot), 1)
+		`<meta name="dap-version" content="0.1.0" />` +
+		`<meta name="dap-theme" content="` + mode + `" />`
+	html := injectTheme(bytes.Replace(b, []byte("<!--DAP_BOOT-->"), []byte(boot), 1), mode)
 	secure(w, s.URL())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
@@ -150,6 +158,26 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 		}
 		next(w, r)
 	}
+}
+
+func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "theme": s.App.Theme()})
+}
+
+func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Theme string `json:"theme"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	mode, err := s.App.SetTheme(body.Theme)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "theme": mode})
 }
 
 func (s *Server) home(w http.ResponseWriter, r *http.Request) {
@@ -457,7 +485,44 @@ func (s *Server) pluginRedirect(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "this plugin has no web UI", http.StatusNotFound)
 		return
 	}
-	http.Redirect(w, r, box.url, http.StatusFound)
+	http.Redirect(w, r, withThemeQuery(box.url, chosenTheme(r, s.App.Theme())), http.StatusFound)
+}
+
+// injectTheme sets data-theme on the root element before the browser paints.
+func injectTheme(doc []byte, mode string) []byte {
+	mode = theme.Stored(mode)
+	attr := []byte(`<html lang="en" data-theme="` + mode + `">`)
+	if bytes.Contains(doc, []byte(`<html lang="en" data-theme="`)) {
+		start := bytes.Index(doc, []byte(`<html lang="en" data-theme="`))
+		end := bytes.Index(doc[start:], []byte(">"))
+		if end > 0 {
+			return append(append([]byte{}, doc[:start]...), append(attr, doc[start+end+1:]...)...)
+		}
+	}
+	return bytes.Replace(doc, []byte("<html lang=\"en\">"), attr, 1)
+}
+
+func chosenTheme(r *http.Request, fallback string) string {
+	q := strings.TrimSpace(r.URL.Query().Get("theme"))
+	if q == "" {
+		return theme.Stored(fallback)
+	}
+	mode, err := theme.Normalize(q)
+	if err != nil {
+		return theme.Stored(fallback)
+	}
+	return mode
+}
+
+func withThemeQuery(raw, mode string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	q := u.Query()
+	q.Set("theme", theme.Stored(mode))
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 func file(static fs.FS, name string) http.HandlerFunc {

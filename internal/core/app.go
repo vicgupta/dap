@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/vicgupta/dap/internal/pluginhost"
 	"github.com/vicgupta/dap/internal/secrets"
 	"github.com/vicgupta/dap/internal/store"
+	"github.com/vicgupta/dap/internal/theme"
 )
 
 // App is one local DAP instance bound to a data directory.
@@ -32,6 +34,7 @@ type App struct {
 	lock    *lockfile.Lock
 
 	mu         sync.Mutex
+	configMu   sync.Mutex
 	runMu      map[string]*sync.Mutex
 	rt         map[string]*runtime
 	checks     []CheckRecord
@@ -66,7 +69,8 @@ type CheckRecord struct {
 
 // FileConfig is the small on-disk config next to the ledger.
 type FileConfig struct {
-	Addr string `json:"addr"`
+	Addr  string `json:"addr"`
+	Theme string `json:"theme,omitempty"`
 }
 
 // Open locks the data directory and loads state. It does not start plugins.
@@ -173,6 +177,7 @@ func ensureConfig(dir string) (FileConfig, error) {
 		if !os.IsNotExist(err) {
 			return FileConfig{}, err
 		}
+		cfg.Theme = theme.System
 		raw, err := json.MarshalIndent(cfg, "", "  ")
 		if err != nil {
 			return FileConfig{}, err
@@ -188,14 +193,60 @@ func ensureConfig(dir string) (FileConfig, error) {
 	if cfg.Addr == "" {
 		cfg.Addr = "127.0.0.1:7391"
 	}
+	cfg.Theme = theme.Stored(cfg.Theme)
 	return cfg, nil
+}
+
+func saveFileConfig(dir string, cfg FileConfig) error {
+	if cfg.Addr == "" {
+		cfg.Addr = "127.0.0.1:7391"
+	}
+	mode, err := theme.Normalize(cfg.Theme)
+	if err != nil {
+		return err
+	}
+	cfg.Theme = mode
+	raw, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(dir, "config.json")
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, append(raw, '\n'), 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+// Theme is the saved appearance mode: system, light, or dark.
+func (a *App) Theme() string {
+	return LoadFileConfig(a.DataDir).Theme
+}
+
+// SetTheme stores the appearance mode in config.json. Empty is rejected.
+func (a *App) SetTheme(v string) (string, error) {
+	if strings.TrimSpace(v) == "" {
+		return "", fmt.Errorf("theme must be system, light, or dark")
+	}
+	mode, err := theme.Normalize(v)
+	if err != nil {
+		return "", err
+	}
+	a.configMu.Lock()
+	defer a.configMu.Unlock()
+	cfg := LoadFileConfig(a.DataDir)
+	cfg.Theme = mode
+	if err := saveFileConfig(a.DataDir, cfg); err != nil {
+		return "", err
+	}
+	return mode, nil
 }
 
 // LoadFileConfig reads config.json, applying the default address if needed.
 func LoadFileConfig(dir string) FileConfig {
 	cfg, err := ensureConfig(dir)
 	if err != nil {
-		return FileConfig{Addr: "127.0.0.1:7391"}
+		return FileConfig{Addr: "127.0.0.1:7391", Theme: theme.System}
 	}
 	return cfg
 }
