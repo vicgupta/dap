@@ -10,6 +10,7 @@ Core version: `0.1.0` (`internal/version`). Go `1.22` or newer.
 | [docs/cli.md](docs/cli.md) | Every `da` command, flag, exit code, and example |
 | [docs/plugins.md](docs/plugins.md) | `plugin.yaml`, the five-step interface, authoring in any language |
 | [docs/runtime.md](docs/runtime.md) | Scheduler, inbox, guardrails, ledger, secrets, doctor, data directory, limitations |
+| [docs/layout.md](docs/layout.md) | Home and inbox card layouts, density, and the plugin contract |
 | [docs/inbox-followups.md](docs/inbox-followups.md) | Follow-ups watcher, Connections, Gmail and Outlook sign-in |
 | [docs/release.md](docs/release.md) | Release install, Gatekeeper, SmartScreen, checksums |
 
@@ -119,8 +120,8 @@ A plugin with a `ui` block is served on its own `127.0.0.1` port. The core route
 
 ## UI
 
-- **Home.** Every plugin, health, last run, next run, pending count, missed-run line.
-- **Decision inbox.** `j` / `k` or the arrow keys move. `a` approves, `e` edits, `r` rejects, `s` snoozes. Shortcuts are ignored while a field is focused. Snooze offers 1 hour, 4 hours, or tomorrow at 08:00 local. Reject asks for a reason. Edit changes the title, summary, and body.
+- **Home.** Every plugin, health, last run, next run, pending count, missed-run line. Grid, list, or board. Tile size is small, medium, or large.
+- **Decision inbox.** `j` / `k` or the arrow keys move. `a` approves, `e` edits, `r` rejects, `s` snoozes. Shortcuts are ignored while a field is focused. Snooze offers 1 hour, 4 hours, or tomorrow at 08:00 local. Reject asks for a reason. Edit changes the title, summary, and body. List, grid, board (one column per plugin), or a split list and detail. Approve and Reject stay on the card in every layout.
 - **Activity.** The ledger, newest first.
 - **Guardrails.** The baked-in rules, each permission's effective mode, and recent checks. A control can tighten a permission. It cannot loosen one.
 - **Plugins.** Review permissions in plain language, approve the install, see health, open a plugin UI, or remove a plugin.

@@ -38,9 +38,26 @@ One queue for every plugin. Cards are stored in `state.json`.
 | `failed` | `act` or applying a change failed |
 | `blocked` | Approval-time guardrail said `never` |
 
-The inbox screen lists `pending`, then `snoozed`.
+The inbox screen lists `pending`, then `snoozed`, unless you have reordered or pinned cards.
 
-Keyboard, when the inbox is open and focus is not in a field:
+## Card layouts
+
+Home and the decision inbox each have their own layout. The switcher sits in the page header: icon buttons, a radiogroup, arrow keys to move, Enter is not required because moving selects. A second group sets density.
+
+| View | Home | Inbox |
+| --- | --- | --- |
+| Grid | Default. Small tiles span a third of the row, medium half, large the whole row. | Two cards across. |
+| List | One column. | Default. One card under the next. |
+| Board | Columns are Needs you, Attention, Down, and Healthy. Empty columns are hidden. | One column per plugin. |
+| Split | — | List of titles plus Approve and Reject, with the open card beside them. Narrow windows show one pane at a time. |
+
+Comfortable is the default density. Compact tightens padding and type. Approve, Edit, Reject, and Snooze stay labeled in every layout, including a collapsed card. Collapse hides the body. Pin keeps a card at the top of its view. Drag the handle to reorder, or focus the handle and press Up or Down.
+
+The choice is stored per view in `localStorage["dap.layout"]` and in `config.json` under `layout`, through `GET` and `PUT /api/settings`. The browser value wins, then it is written back so the next browser on this machine starts there. `layout-boot.js` applies density and the view before the stylesheet loads, so the first paint matches. Defaults are Home grid and inbox list, both comfortable.
+
+A plugin page follows the Home density. The contract is in [layout.md](layout.md). Tile span comes from `plugin.yaml` (`tile.size`, `tile.min`) until the person changes it on the card. See [plugins.md](plugins.md).
+
+Keyboard, when the inbox is open and focus is not in a field or on a layout control:
 
 | Key | Action |
 | --- | --- |
@@ -147,7 +164,7 @@ Mode `0700` on the directory. JSON state files are mode `0600`.
 
 | Path | Role |
 | --- | --- |
-| `config.json` | `addr`. Created by `da init`. Default `127.0.0.1:7391`. |
+| `config.json` | `addr`, and `layout` once a view is changed. Created by `da init`. Default address `127.0.0.1:7391`. Other keys in the file are kept. |
 | `state.json` | Installed plugins, config, schedule cursor, tiles, metrics, cards, guardrail rules, plugin scratch state. |
 | `ledger.jsonl` | Append-only activity. |
 | `secrets.json` | File backend only. |
