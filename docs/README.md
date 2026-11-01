@@ -7,3 +7,4 @@ These notes match this tree (core version `0.1.0`, plus inbox follow-ups).
 - [Plugins](plugins.md) covers `plugin.yaml` and `dap.plugin.v1`.
 - [Runtime](runtime.md) covers the scheduler, inbox, guardrails, ledger, secrets, doctor, files, tests, and limitations.
 - [Inbox follow-ups](inbox-followups.md) covers the watcher, Connections, and Gmail and Outlook sign-in.
+- [Release](release.md) covers the macOS pre-release, Gatekeeper, and checksums.
