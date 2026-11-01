@@ -319,3 +319,5 @@ Call the scoped API with `Authorization: Bearer <token>` and `api_base` from `in
 `workflow` stores its cursor with `PUT /state`. Safe steps call `POST /check` with `workflow.run` and no effects, then `POST /log`. A step whose effects include `sends`, `spends`, or `deletes` becomes one card with permission `share.team` and waits. `act` calls `POST /call` with that card id before it records the step, then runs any following safe steps. The step editor (`plugins/workflow/ui`) saves by `POST /propose` with `kind: change` and permission `workflow.rules`. The new steps and `every` apply only after that card is approved.
 
 Both can be installed together. They do not depend on each other, and a pending card in one does not stop the other.
+
+`mail-fake`, `mail-gmail`, and `mail-graph` are capability plugins. `inbox-followups` is a watcher that proposes drafts and sends only after you approve a card. Tokens stay in the host. The setup and the mail API are in [inbox-followups.md](inbox-followups.md).

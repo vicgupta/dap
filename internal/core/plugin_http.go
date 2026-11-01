@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vicgupta/dap/internal/mail"
 	"github.com/vicgupta/dap/internal/model"
 )
 
@@ -69,7 +70,11 @@ func (a *App) routePlugin(w http.ResponseWriter, r *http.Request, plugin, rest s
 			writeErr(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "plugin": ctx.Plugin, "config": ctx.Config, "schedule": ctx.Schedule, "state": json.RawMessage(ctx.State), "open_cards": ctx.OpenCards, "health": ctx.Health})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok": true, "plugin": ctx.Plugin, "config": ctx.Config, "schedule": ctx.Schedule,
+			"state": json.RawMessage(ctx.State), "open_cards": ctx.OpenCards, "health": ctx.Health,
+			"last_run": ctx.LastRun, "next_run": ctx.NextRun, "missed": ctx.Missed, "pending": ctx.Pending,
+		})
 	case r.Method == http.MethodGet && rest == "cards":
 		cards, err := a.PluginCards(plugin)
 		if err != nil {
@@ -214,9 +219,130 @@ func (a *App) routePlugin(w http.ResponseWriter, r *http.Request, plugin, rest s
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	case r.Method == http.MethodGet && rest == "inbox":
+		cards, err := a.PluginInbox(plugin)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "cards": cards})
+	case r.Method == http.MethodPost && strings.HasPrefix(rest, "inbox/") && strings.HasSuffix(rest, "/approve"):
+		card, err := a.PluginApprove(plugin, inboxID(rest, "approve"))
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "card": card})
+	case r.Method == http.MethodPost && strings.HasPrefix(rest, "inbox/") && strings.HasSuffix(rest, "/edit"):
+		var body struct {
+			Title   *string          `json:"title"`
+			Summary *string          `json:"summary"`
+			Body    *string          `json:"body"`
+			Payload *json.RawMessage `json:"payload"`
+		}
+		if err := decode(r, &body); err != nil {
+			writeErr(w, err)
+			return
+		}
+		card, err := a.PluginEdit(plugin, inboxID(rest, "edit"), Edit{Title: body.Title, Summary: body.Summary, Body: body.Body, Payload: body.Payload})
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "card": card})
+	case r.Method == http.MethodPost && strings.HasPrefix(rest, "inbox/") && strings.HasSuffix(rest, "/reject"):
+		var body struct {
+			Reason string `json:"reason"`
+		}
+		if err := decode(r, &body); err != nil {
+			writeErr(w, err)
+			return
+		}
+		card, err := a.PluginReject(plugin, inboxID(rest, "reject"), body.Reason)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "card": card})
+	case r.Method == http.MethodPost && strings.HasPrefix(rest, "inbox/") && strings.HasSuffix(rest, "/snooze"):
+		var body struct {
+			Preset string `json:"preset"`
+			Until  string `json:"until"`
+		}
+		if err := decode(r, &body); err != nil {
+			writeErr(w, err)
+			return
+		}
+		until, err := snoozePlugin(body.Preset, body.Until, time.Now())
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		card, err := a.PluginSnooze(plugin, inboxID(rest, "snooze"), until)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "card": card})
+	case r.Method == http.MethodGet && rest == "mail/status":
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "connections": a.MailStatuses()})
+	case r.Method == http.MethodGet && rest == "mail/threads":
+		threads, err := a.MailThreads(r.Context(), plugin, r.URL.Query().Get("provider"))
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "threads": threads})
+	case r.Method == http.MethodPost && rest == "mail/send":
+		var req mail.SendRequest
+		if err := decode(r, &req); err != nil {
+			writeErr(w, err)
+			return
+		}
+		res, err := a.MailSend(r.Context(), plugin, req)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "result": res})
+	case r.Method == http.MethodPost && rest == "mail/undo":
+		var body struct {
+			Provider  string `json:"provider"`
+			MessageID string `json:"message_id"`
+		}
+		if err := decode(r, &body); err != nil {
+			writeErr(w, err)
+			return
+		}
+		if err := a.MailUndo(plugin, body.Provider, body.MessageID); err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]any{"ok": false, "error": "not found"})
 	}
+}
+
+func inboxID(rest, action string) string {
+	rest = strings.TrimPrefix(rest, "inbox/")
+	return strings.TrimSuffix(rest, "/"+action)
+}
+
+func snoozePlugin(preset, until string, now time.Time) (time.Time, error) {
+	switch preset {
+	case "1h":
+		return now.Add(time.Hour), nil
+	case "4h":
+		return now.Add(4 * time.Hour), nil
+	case "tomorrow":
+		local := now.In(time.Local)
+		return time.Date(local.Year(), local.Month(), local.Day(), 8, 0, 0, 0, time.Local).AddDate(0, 0, 1), nil
+	}
+	if until == "" {
+		return time.Time{}, errors.New("choose a snooze time")
+	}
+	return time.Parse(time.RFC3339, until)
 }
 
 func splitPath(p string) []string {

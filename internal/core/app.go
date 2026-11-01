@@ -15,6 +15,7 @@ import (
 
 	"github.com/vicgupta/dap/internal/ledger"
 	"github.com/vicgupta/dap/internal/lockfile"
+	"github.com/vicgupta/dap/internal/mail"
 	"github.com/vicgupta/dap/internal/model"
 	"github.com/vicgupta/dap/internal/pluginhost"
 	"github.com/vicgupta/dap/internal/secrets"
@@ -28,6 +29,7 @@ type App struct {
 	store   *store.Store
 	ledger  *ledger.Ledger
 	secrets secrets.Keeper
+	mail    *mail.Broker
 	host    *pluginhost.Host
 	lock    *lockfile.Lock
 
@@ -104,11 +106,17 @@ func Open(dir string) (*App, error) {
 			sec = auto
 		}
 	}
+	box, err := mail.New(abs, sec)
+	if err != nil {
+		_ = lk.Release()
+		return nil, err
+	}
 	return &App{
 		DataDir:    abs,
 		store:      st,
 		ledger:     led,
 		secrets:    sec,
+		mail:       box,
 		host:       pluginhost.New(),
 		lock:       lk,
 		runMu:      map[string]*sync.Mutex{},
