@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vicgupta/dap/internal/composio"
 	"github.com/vicgupta/dap/internal/desktop"
 	"github.com/vicgupta/dap/internal/mail/gmail"
 	"github.com/vicgupta/dap/internal/mail/graph"
@@ -25,6 +26,7 @@ type (
 	Thread      = mailbox.Thread
 	SendRequest = mailbox.SendRequest
 	SendResult  = mailbox.SendResult
+	DraftResult = mailbox.DraftResult
 	Status      = mailbox.Status
 	Throttle    = mailbox.Throttle
 )
@@ -48,11 +50,25 @@ type Broker struct {
 	GoogleToken string
 	GraphAuth   string
 	GraphToken  string
+	// ComposioAPI overrides the hosted API. Tests point it at a local server.
+	ComposioAPI string
+
+	connect *composio.Service
 }
 
 type publicCfg struct {
 	ClientID string `json:"client_id,omitempty"`
 	Calendar bool   `json:"calendar,omitempty"`
+	Mode     string `json:"mode,omitempty"`
+}
+
+// Configure changes connection setup. Nil fields are left alone.
+// The API key is stored in the secret keeper, never in public.json.
+type Configure struct {
+	APIKey   *string
+	ClientID *string
+	Calendar *bool
+	Mode     *string
 }
 
 type secretBlob struct {
@@ -79,6 +95,10 @@ func New(dir string, keeper secrets.Keeper) (*Broker, error) {
 	if err != nil {
 		return nil, err
 	}
+	cio, err := composio.New(dir, keeper, desktop.Open)
+	if err != nil {
+		return nil, err
+	}
 	b := &Broker{
 		dir:     dir,
 		secrets: keeper,
@@ -86,6 +106,7 @@ func New(dir string, keeper secrets.Keeper) (*Broker, error) {
 		open:    desktop.Open,
 		now:     time.Now,
 		public:  map[string]publicCfg{},
+		connect: cio,
 	}
 	_ = b.loadPublic()
 	return b, nil
@@ -95,7 +116,18 @@ func New(dir string, keeper secrets.Keeper) (*Broker, error) {
 func (b *Broker) SetClock(now func() time.Time) { b.now = now }
 
 // SetOpener overrides how the sign-in window is shown.
-func (b *Broker) SetOpener(fn func(string) error) { b.open = fn }
+func (b *Broker) SetOpener(fn func(string) error) {
+	b.open = fn
+	if b.connect != nil {
+		b.connect.SetOpener(fn)
+	}
+}
+
+func (b *Broker) prepare() {
+	if b.connect != nil && b.ComposioAPI != "" {
+		b.connect.SetBase(b.ComposioAPI)
+	}
+}
 
 func (b *Broker) loadPublic() error {
 	raw, err := os.ReadFile(b.publicPath())
@@ -117,104 +149,206 @@ func (b *Broker) savePublicLocked() error {
 
 // Setup stores a public client id. Calendar applies to Outlook only and defaults off.
 func (b *Broker) Setup(provider, clientID string, calendar bool) error {
-	if provider != "gmail" && provider != "graph" {
-		return errors.New("this provider has no client id")
+	return b.Configure(provider, Configure{ClientID: &clientID, Calendar: &calendar})
+}
+
+// Configure stores non-secret connection choices. The API key goes to the secret keeper.
+func (b *Broker) Configure(provider string, cfg Configure) error {
+	if cfg.APIKey != nil {
+		if err := b.connect.SetKey(*cfg.APIKey); err != nil {
+			return err
+		}
+	}
+	if provider == "" || provider == "composio" {
+		return nil
+	}
+	provider = canonProvider(provider)
+	if provider != "gmail" && provider != "outlook" {
+		if cfg.Mode != nil && strings.TrimSpace(*cfg.Mode) == "direct" {
+			return errors.New("only Outlook can fall back to a direct connection")
+		}
+		return nil
+	}
+	if cfg.Mode != nil {
+		mode := strings.TrimSpace(*cfg.Mode)
+		if mode != "" && mode != "composio" && mode != "direct" {
+			return errors.New("mode must be composio or direct")
+		}
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	cfg := b.public[provider]
-	cfg.ClientID = strings.TrimSpace(clientID)
-	cfg.Calendar = calendar
-	b.public[provider] = cfg
+	key := publicKey(provider)
+	cur := b.public[key]
+	if cfg.ClientID != nil {
+		cur.ClientID = strings.TrimSpace(*cfg.ClientID)
+	}
+	if cfg.Calendar != nil {
+		cur.Calendar = *cfg.Calendar
+	}
+	if cfg.Mode != nil {
+		cur.Mode = strings.TrimSpace(*cfg.Mode)
+	}
+	b.public[key] = cur
 	return b.savePublicLocked()
 }
 
-// Connect starts sign-in. The demo mailbox connects locally.
+// Connect starts sign-in. Gmail and Outlook use Composio unless a direct path is selected.
 func (b *Broker) Connect(ctx context.Context, provider string) error {
+	b.prepare()
 	switch provider {
 	case "fake":
 		return b.fake.Connect()
-	case "gmail", "graph":
-		return b.authorize(ctx, provider, false)
+	case "gmail":
+		if b.useDirect("gmail") {
+			return b.authorize(ctx, "gmail", false)
+		}
+		return b.connectComposio(ctx, "gmail")
+	case "graph", "outlook":
+		if b.useDirect("outlook") {
+			return b.authorize(ctx, "graph", false)
+		}
+		return b.connectComposio(ctx, "outlook")
 	default:
-		return errors.New("unknown mail provider")
+		return b.connectComposio(ctx, provider)
 	}
 }
 
-// Disconnect drops tokens. The public client id is kept.
+// Disconnect drops a connection. A public client id, if any, is kept.
+// The Composio API key is kept so other toolkits stay connected.
 func (b *Broker) Disconnect(provider string) error {
 	switch provider {
 	case "fake":
 		return b.fake.Disconnect()
-	case "gmail", "graph":
-		return b.secrets.Delete(secretService, provider)
 	default:
-		return errors.New("unknown mail provider")
+		b.prepare()
+		canon := canonProvider(provider)
+		if canon == "gmail" || canon == "outlook" {
+			_ = ignoreMissing(b.secrets.Delete(secretService, secretAccount(canon)))
+		}
+		if b.connect == nil {
+			return errors.New("unknown mail provider")
+		}
+		return b.connect.Revoke(context.Background(), canon)
 	}
 }
 
-// Status reports one provider. Tokens are not included.
+// Status reports one provider. Tokens, the API key, and connection ids are not included.
 func (b *Broker) Status(provider string) Status {
-	return b.status(provider)
-}
-
-// Statuses reports Gmail, Outlook, and the demo mailbox.
-func (b *Broker) Statuses() []Status {
-	return []Status{b.Status("gmail"), b.Status("graph"), b.Status("fake")}
-}
-
-// Check refreshes a live token so doctor can report whether refresh works.
-func (b *Broker) Check(ctx context.Context, provider string) Status {
-	if provider == "gmail" || provider == "graph" {
-		blob, _ := b.load(provider)
-		if blob.Connected {
-			if _, err := b.ensureFresh(ctx, provider); err != nil {
-				_ = b.noteRefresh(provider, false, "refresh failed")
-			} else {
-				_ = b.noteRefresh(provider, true, "token present, refresh works")
-			}
+	if provider == "fake" {
+		return b.status("fake")
+	}
+	want := canonProvider(provider)
+	for _, row := range b.composioRows() {
+		if row.Provider == want {
+			return row
 		}
 	}
 	return b.status(provider)
+}
+
+// Statuses reports every toolkit, then the demo mailbox.
+func (b *Broker) Statuses() []Status {
+	return append(b.composioRows(), b.status("fake"))
+}
+
+// Check refreshes a live token, or asks Composio if that connection is still active.
+func (b *Broker) Check(ctx context.Context, provider string) Status {
+	b.prepare()
+	switch canonProvider(provider) {
+	case "gmail", "outlook":
+		if b.useDirect(provider) {
+			account := secretAccount(canonProvider(provider))
+			blob, _ := b.load(account)
+			if blob.Connected {
+				if _, err := b.ensureFresh(ctx, account); err != nil {
+					_ = b.noteRefresh(account, false, "refresh failed")
+				} else {
+					_ = b.noteRefresh(account, true, "token present, refresh works")
+				}
+			}
+		} else if b.connect != nil {
+			_, _ = b.connect.Probe(ctx, canonProvider(provider))
+		}
+	}
+	return b.Status(provider)
 }
 
 // Threads lists conversations for a connected mailbox.
 func (b *Broker) Threads(ctx context.Context, provider string) ([]Thread, error) {
+	b.prepare()
 	switch provider {
 	case "fake":
 		return b.fake.Threads(b.now()), nil
 	case "gmail":
-		blob, err := b.ensureFresh(ctx, provider)
+		if !b.useDirect("gmail") {
+			return b.composioThreads(ctx, "gmail")
+		}
+		blob, err := b.ensureFresh(ctx, "gmail")
 		if err != nil {
 			return nil, err
 		}
 		return (&gmail.Client{API: b.GmailAPI}).ListThreads(ctx, blob.AccessToken, blob.Account)
-	case "graph":
-		blob, err := b.ensureFresh(ctx, provider)
+	case "graph", "outlook":
+		if !b.useDirect("outlook") {
+			return b.composioThreads(ctx, "outlook")
+		}
+		blob, err := b.ensureFresh(ctx, "graph")
 		if err != nil {
 			return nil, err
 		}
 		client := &graph.Client{API: b.GraphAPI, OnThrottle: func(th httpx.Throttle) {
-			_ = b.noteThrottle(provider, th.Until, th.Status)
+			_ = b.noteThrottle("graph", th.Until, th.Status)
 		}}
 		threads, cur, err := client.ListThreads(ctx, blob.AccessToken, blob.Account, graph.DeltaCursor{Inbox: blob.DeltaInbox, Sent: blob.DeltaSent})
 		if err != nil {
 			return nil, err
 		}
 		blob.DeltaInbox, blob.DeltaSent = cur.Inbox, cur.Sent
-		_ = b.put(provider, blob)
+		_ = b.put("graph", blob)
+		for i := range threads {
+			threads[i].Provider = "outlook"
+		}
 		return threads, nil
 	default:
+		if !b.useDirect(provider) {
+			return b.composioThreads(ctx, provider)
+		}
 		return nil, errors.New("unknown mail provider")
 	}
 }
 
-// Send delivers one message. The first real send asks for the send scope if it is missing.
+// Draft creates a provider draft. Direct Gmail and Graph keep the draft on the card.
+func (b *Broker) Draft(ctx context.Context, req SendRequest) (DraftResult, error) {
+	b.prepare()
+	switch canonProvider(req.Provider) {
+	case "fake":
+		return DraftResult{Provider: "fake", Local: true}, nil
+	case "gmail":
+		if b.useDirect("gmail") {
+			return DraftResult{Provider: "gmail", Local: true}, nil
+		}
+		return b.composioDraft(ctx, req)
+	case "outlook":
+		if b.useDirect("outlook") {
+			return DraftResult{Provider: "outlook", Local: true}, nil
+		}
+		return b.composioDraft(ctx, req)
+	default:
+		return b.composioDraft(ctx, req)
+	}
+}
+
+// Send delivers one message. The first direct send asks for the send scope if it is missing.
+// Composio sends still have to be called only after an approved card. The host gate does that.
 func (b *Broker) Send(ctx context.Context, req SendRequest) (SendResult, error) {
+	b.prepare()
 	switch req.Provider {
 	case "fake":
 		return b.fake.Send(req, b.now())
 	case "gmail":
+		if !b.useDirect("gmail") {
+			return b.composioSend(ctx, req)
+		}
 		blob, err := b.ensureFresh(ctx, "gmail")
 		if err != nil {
 			return SendResult{}, err
@@ -229,7 +363,10 @@ func (b *Broker) Send(ctx context.Context, req SendRequest) (SendResult, error) 
 			}
 		}
 		return (&gmail.Client{API: b.GmailAPI}).Send(ctx, blob.AccessToken, blob.Account, req)
-	case "graph":
+	case "graph", "outlook":
+		if !b.useDirect("outlook") {
+			return b.composioSend(ctx, req)
+		}
 		blob, err := b.ensureFresh(ctx, "graph")
 		if err != nil {
 			return SendResult{}, err
@@ -246,8 +383,16 @@ func (b *Broker) Send(ctx context.Context, req SendRequest) (SendResult, error) 
 		client := &graph.Client{API: b.GraphAPI, OnThrottle: func(th httpx.Throttle) {
 			_ = b.noteThrottle("graph", th.Until, th.Status)
 		}}
-		return client.Send(ctx, blob.AccessToken, req)
+		res, err := client.Send(ctx, blob.AccessToken, req)
+		if err != nil {
+			return SendResult{}, err
+		}
+		res.Provider = "outlook"
+		return res, nil
 	default:
+		if canonProvider(req.Provider) != "fake" {
+			return b.composioSend(ctx, req)
+		}
 		return SendResult{}, errors.New("unknown mail provider")
 	}
 }
@@ -507,7 +652,7 @@ func label(provider string) string {
 	switch provider {
 	case "gmail":
 		return "Gmail"
-	case "graph":
+	case "graph", "outlook":
 		return "Outlook"
 	case "fake":
 		return "Demo mailbox"

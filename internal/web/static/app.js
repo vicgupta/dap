@@ -17,6 +17,7 @@ const state = {
   mode: null,
   installPath: "",
   preview: null,
+  connecting: "",
   data: {},
 };
 
@@ -326,48 +327,101 @@ function pluginsView() {
 function connectionsView() {
   const data = state.data.connections;
   if (!data) return shell(`<p class="sub">Loading…</p>`);
-  const cards = (data.connections || []).map((c) => {
-    const dot = c.connected ? "ok" : "degraded";
-    const scopes = (c.scopes || []).join(", ") || "—";
-    const throttle = c.throttle && c.throttle.active ? `Throttled until ${esc(fmtTime(c.throttle.until))}.` : "";
-    const client = c.provider === "fake" ? "" : `
-      <label class="field">Client ID
-        <input data-client="${esc(c.provider)}" type="text" value="${esc(c.client_id || "")}" placeholder="Public client id" />
-      </label>`;
-    const calendar = c.provider === "graph" ? `
-      <label class="sub"><input data-calendar type="checkbox" ${c.calendar_enabled ? "checked" : ""} /> Calendars.Read (off unless you need it)</label>` : "";
+  const cards = (data.connections || []).map((c) => connectionCard(c, !!data.key_saved)).join("");
+  const agents = (data.agents || []).map((a) => `<li>${esc(a.name)} · ${a.found ? esc(a.path) : "not on PATH"}</li>`).join("");
+  return shell(`
+    <header class="page-head"><div>
+      <h1>Connections</h1>
+      <p>Sign in inside Google or Microsoft’s window. Composio holds those tokens. DAP stores the API key and each connection id in the keychain.</p>
+    </div></header>
+    <article class="card plugin-block">
+      <h2 style="margin:0">Composio</h2>
+      <p class="sub">One key covers Gmail, Outlook, and any toolkit you add later. Message contents pass through Composio.</p>
+      <label class="field">API key
+        <input data-composio-key type="password" autocomplete="off" spellcheck="false" placeholder="${data.key_saved ? "Saved — paste a new key to replace it" : "Paste the key from the Composio dashboard"}" />
+      </label>
+      <div class="actions" style="margin-top:12px">
+        <button class="primary" data-act="save-key">Save key</button>
+        ${data.key_saved ? `<span class="pill allowed">Key saved</span>` : `<span class="pill">No key yet</span>`}
+      </div>
+    </article>
+    <div class="stack">${cards}</div>
+    <h2 class="section-title">Coding agents</h2>
+    <ul class="card plugin-block">${agents}</ul>
+  `);
+}
+
+function connectionCard(c, keySaved) {
+  const dot = c.connected ? "ok" : "degraded";
+  const waiting = state.connecting === c.provider;
+  const account = c.account ? " · " + esc(c.account) : "";
+  const detail = c.refresh_detail && c.refresh_detail !== "not connected" ? `<p class="sub">${esc(c.refresh_detail)}</p>` : "";
+  const throttle = c.throttle && c.throttle.active ? `<p class="missed">Throttled until ${esc(fmtTime(c.throttle.until))}.</p>` : "";
+  if (c.provider === "fake") {
     return `<article class="card plugin-block">
       <header class="row">
         <span class="dot ${dot}"></span>
         <div style="flex:1">
           <h2 style="margin:0">${esc(c.label)}</h2>
-          <p class="sub">${c.connected ? "Connected" : "Not connected"}${c.account ? " · " + esc(c.account) : ""} · ${esc(c.broker || "")}</p>
-      </div>
+          <p class="sub">${c.connected ? "Connected" : "Not connected"}${account}</p>
+        </div>
         ${c.installed ? `<span class="pill allowed">Installed</span>` : `<span class="pill">Not installed</span>`}
       </header>
-      ${c.refresh_detail && c.refresh_detail !== "not connected" ? `<p class="sub">${esc(c.refresh_detail)}</p>` : ""}
-      <p class="sub">Scopes: ${esc(scopes)}</p>
-      ${throttle ? `<p class="missed">${throttle}</p>` : ""}
-      ${client}
-      ${calendar}
+      <p class="sub">Local sample threads. No account and no token.</p>
       <div class="actions" style="margin-top:12px">
-        ${c.provider !== "fake" ? `<button class="ghost" data-act="save-connection" data-provider="${esc(c.provider)}">Save client id</button>` : ""}
         ${c.connected
-          ? `<button class="ghost" data-act="disconnect" data-provider="${esc(c.provider)}">Disconnect</button>`
-          : `<button class="primary" data-act="connect" data-provider="${esc(c.provider)}">Connect</button>`}
+          ? `<button class="ghost" data-act="disconnect" data-provider="fake">Disconnect</button>`
+          : `<button class="primary" data-act="connect" data-provider="fake">Connect</button>`}
       </div>
     </article>`;
-  }).join("");
-  const agents = (data.agents || []).map((a) => `<li>${esc(a.name)} · ${a.found ? esc(a.path) : "not on PATH"}</li>`).join("");
-  return shell(`
-    <header class="page-head"><div>
-      <h1>Connections</h1>
-      <p>Mail tokens stay in the OS keychain. Plugins never see them. You sign in inside Google or Microsoft’s window.</p>
-    </div></header>
-    <div class="stack">${cards}</div>
-    <h2 class="section-title">Coding agents</h2>
-    <ul class="card plugin-block">${agents}</ul>
-  `);
+  }
+  const direct = c.mode === "direct";
+  const connectLabel = waiting ? "Waiting for sign-in…" : "Connect " + (c.label || "account");
+  let button = "";
+  if (c.connected) {
+    button = `<button class="ghost" data-act="disconnect" data-provider="${esc(c.provider)}">Disconnect</button>`;
+  } else if (direct) {
+    button = `<button class="primary" data-act="connect" data-provider="${esc(c.provider)}" ${waiting ? "disabled" : ""}>${esc(connectLabel)}</button>`;
+  } else {
+    button = `<button class="primary" data-act="connect" data-provider="${esc(c.provider)}" ${!keySaved || waiting ? "disabled" : ""}>${esc(connectLabel)}</button>`;
+  }
+  const needKey = !direct && !keySaved && !c.connected ? `<p class="sub">Save the Composio API key first.</p>` : "";
+  return `<article class="card plugin-block">
+    <header class="row">
+      <span class="dot ${dot}"></span>
+      <div style="flex:1">
+        <h2 style="margin:0">${esc(c.label)}</h2>
+        <p class="sub">${c.connected ? "Connected" : "Not connected"}${account}${direct ? " · direct" : " · Composio"}</p>
+      </div>
+      ${c.installed ? `<span class="pill allowed">Installed</span>` : ""}
+    </header>
+    ${c.summary ? `<p class="sub">${esc(c.summary)}</p>` : ""}
+    ${detail}
+    ${throttle}
+    ${needKey}
+    ${direct ? directFields(c) : ""}
+    <div class="actions" style="margin-top:12px">
+      ${button}
+      ${direct ? `<button class="quiet" data-act="set-mode" data-provider="${esc(c.provider)}" data-mode="composio">Use Composio</button>` : ""}
+    </div>
+    ${c.direct_fallback && !direct ? graphFallback(c) : ""}
+  </article>`;
+}
+
+function directFields(c) {
+  const calendar = c.provider === "outlook" || c.provider === "graph" ? `
+    <label class="sub"><input data-calendar type="checkbox" ${c.calendar_enabled ? "checked" : ""} /> Calendars.Read, off unless you need it</label>` : "";
+  return `<label class="field">Client ID
+      <input data-client="${esc(c.provider)}" type="text" value="${esc(c.client_id || "")}" placeholder="Public client id" autocomplete="off" />
+    </label>
+    ${calendar}
+    <div class="actions" style="margin-top:8px">
+      <button class="ghost" data-act="save-connection" data-provider="${esc(c.provider)}">Save client id</button>
+    </div>`;
+}
+
+function graphFallback(c) {
+  return `<p class="sub" style="margin-top:10px"><button class="quiet" data-act="set-mode" data-provider="${esc(c.provider)}" data-mode="direct">Microsoft Graph instead</button></p>`;
 }
 
 function render() {
@@ -470,17 +524,33 @@ document.addEventListener("click", (ev) => {
     state.preview = null;
     render();
   } else if (actName === "connect") {
-    act("connect", () => api("/api/connections/" + el.dataset.provider + "/connect", { method: "POST", body: {} }));
+    state.connecting = el.dataset.provider;
+    render();
+    act("connect", () => api("/api/connections/" + el.dataset.provider + "/connect", { method: "POST", body: {} }))
+      .finally(() => { state.connecting = ""; render(); });
   } else if (actName === "disconnect") {
     act("disconnect", () => api("/api/connections/" + el.dataset.provider + "/disconnect", { method: "POST", body: {} }));
+  } else if (actName === "save-key") {
+    const input = document.querySelector("[data-composio-key]");
+    const value = input ? input.value.trim() : "";
+    act("save-key", async () => {
+      if (!value) throw new Error("Paste the Composio API key first");
+      await api("/api/connections/composio/setup", { method: "POST", body: { api_key: value } });
+      if (input) input.value = "";
+      state.notice = "API key saved in the keychain.";
+    });
+  } else if (actName === "set-mode") {
+    act("mode", () => api("/api/connections/" + el.dataset.provider + "/setup", {
+      method: "POST",
+      body: { mode: el.dataset.mode },
+    }));
   } else if (actName === "save-connection") {
     const provider = el.dataset.provider;
     const input = document.querySelector(`[data-client="${provider}"]`);
     const cal = document.querySelector("[data-calendar]");
-    act("setup", () => api("/api/connections/" + provider + "/setup", {
-      method: "POST",
-      body: { client_id: input ? input.value.trim() : "", calendar: !!(cal && cal.checked && provider === "graph") },
-    }));
+    const body = { client_id: input ? input.value.trim() : "", calendar: !!(cal && cal.checked) };
+    if (el.dataset.mode) body.mode = el.dataset.mode;
+    act("setup", () => api("/api/connections/" + provider + "/setup", { method: "POST", body }));
   } else if (actName === "confirm-install") {
     act("install", async () => {
       await api("/api/plugins/install", { method: "POST", body: { path: state.installPath, approve: true } });

@@ -335,19 +335,24 @@ func (s *Server) run(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) connections(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "connections": s.App.MailStatuses(), "agents": core.DetectAgents()})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok": true, "key_saved": s.App.ComposioKeySaved(),
+		"connections": s.App.MailStatuses(), "agents": core.DetectAgents(),
+	})
 }
 
 func (s *Server) connectionSetup(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ClientID string `json:"client_id"`
-		Calendar bool   `json:"calendar"`
+		ClientID *string `json:"client_id"`
+		Calendar *bool   `json:"calendar"`
+		Mode     *string `json:"mode"`
+		APIKey   *string `json:"api_key"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeErr(w, err)
 		return
 	}
-	if err := s.App.MailSetup(r.PathValue("provider"), body.ClientID, body.Calendar); err != nil {
+	if err := s.App.ConfigureConnection(r.PathValue("provider"), body.ClientID, body.Calendar, body.Mode, body.APIKey); err != nil {
 		writeErr(w, err)
 		return
 	}

@@ -320,4 +320,4 @@ Call the scoped API with `Authorization: Bearer <token>` and `api_base` from `in
 
 Both can be installed together. They do not depend on each other, and a pending card in one does not stop the other.
 
-`mail-fake`, `mail-gmail`, and `mail-graph` are capability plugins. `inbox-followups` is a watcher that proposes drafts and sends only after you approve a card. Tokens stay in the host. The setup and the mail API are in [inbox-followups.md](inbox-followups.md).
+`mail-fake`, `mail-gmail`, and `mail-graph` are capability plugins. `inbox-followups` is a watcher that proposes drafts and sends only after you approve a card. Gmail and Outlook are interchangeable mail providers on the Composio layer. The host stores the API key and connection ids. The setup is in [composio.md](composio.md) and [inbox-followups.md](inbox-followups.md). Adding another toolkit is in [plugin-authoring.md](plugin-authoring.md).

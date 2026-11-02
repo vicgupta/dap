@@ -23,6 +23,7 @@ func (a *App) MailStatuses() []mail.Status {
 		case "mail-gmail":
 			installed["gmail"] = true
 		case "mail-graph":
+			installed["outlook"] = true
 			installed["graph"] = true
 		case "mail-fake":
 			installed["fake"] = true
@@ -38,14 +39,14 @@ func (a *App) MailStatuses() []mail.Status {
 func (a *App) MailChecks(ctx context.Context) []DoctorCheck {
 	var out []DoctorCheck
 	for _, st := range a.MailStatuses() {
-		if !st.Installed && st.Provider != "fake" && st.Provider != "gmail" && st.Provider != "graph" {
+		if st.Provider == "fake" && !st.Installed {
 			continue
 		}
-		if !st.Installed {
+		if !st.Installed && !st.Connected {
 			continue
 		}
 		checked := st
-		if st.Provider == "gmail" || st.Provider == "graph" {
+		if st.Kind == "mail" || st.Provider == "gmail" || st.Provider == "outlook" || st.Provider == "graph" {
 			checked = a.mail.Check(ctx, st.Provider)
 			checked.Installed = true
 		}
@@ -64,7 +65,9 @@ func (a *App) MailChecks(ctx context.Context) []DoctorCheck {
 		}
 		if checked.Connected {
 			scope := "no send scope yet"
-			if checked.SendGranted {
+			if checked.Via == "composio" {
+				scope = "sends wait for an approved card"
+			} else if checked.SendGranted {
 				scope = "send scope granted"
 			}
 			detail = strings.TrimSpace(detail + " · " + scope)
@@ -74,10 +77,25 @@ func (a *App) MailChecks(ctx context.Context) []DoctorCheck {
 	return out
 }
 
-// MailSetup stores a public client id for Gmail or Outlook.
+// MailSetup stores a public client id for the direct Gmail or Graph path.
 func (a *App) MailSetup(provider, clientID string, calendar bool) error {
 	return a.mail.Setup(provider, clientID, calendar)
 }
+
+// MailConfigure stores connection choices. A non-nil API key is written to the secret keeper.
+func (a *App) MailConfigure(provider string, cfg mail.Configure) error {
+	return a.mail.Configure(provider, cfg)
+}
+
+// ConfigureConnection is the admin setup call. Nil fields are left unchanged.
+func (a *App) ConfigureConnection(provider string, clientID *string, calendar *bool, mode, apiKey *string) error {
+	return a.mail.Configure(provider, mail.Configure{
+		ClientID: clientID, Calendar: calendar, Mode: mode, APIKey: apiKey,
+	})
+}
+
+// ComposioKeySaved reports the key without returning it.
+func (a *App) ComposioKeySaved() bool { return a.mail.HasComposioKey() }
 
 // MailConnect starts provider sign-in. The demo mailbox connects without a browser.
 func (a *App) MailConnect(ctx context.Context, provider string) error {
@@ -95,6 +113,14 @@ func (a *App) MailDisconnect(provider string) error {
 	}
 	a.logMail(provider, "mail.disconnect", "Disconnected "+provider)
 	return nil
+}
+
+// MailDraft creates a provider draft. It does not send and it is not ledgered.
+func (a *App) MailDraft(ctx context.Context, plugin string, req mail.SendRequest) (mail.DraftResult, error) {
+	if err := a.gate(plugin, "mail.draft", nil, "", false); err != nil {
+		return mail.DraftResult{}, err
+	}
+	return a.mail.Draft(ctx, req)
 }
 
 // MailThreads lists a mailbox for a plugin that declared mail.read.

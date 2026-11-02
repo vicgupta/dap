@@ -82,7 +82,7 @@ The body is `version`, `ok`, and `checks`. Each check has `name`, `ok`, `detail`
 | `plugin:<plugin>` | not running, health is not `ok`, permissions need approval, or start failed |
 | `permissions:<plugin>` | the manifest asked for a permission that is not approved |
 | `agents` | never. Missing agents are listed and `ok` stays true |
-| `mail:<provider>` | an installed Gmail or Outlook mailbox is connected and refresh failed. `provider` is `gmail`, `graph`, or `fake`. Detail includes send scope and any throttle window. The demo mailbox does not fail doctor |
+| `mail:<provider>` | an installed mailbox is connected and its connection check failed. `provider` is `gmail`, `outlook`, `fake`, or a toolkit added in `composio/toolkits.json`. Composio rows fail when the connection is no longer active. Direct Gmail and Microsoft Graph fail when token refresh fails. Detail says that sends wait for an approved card, or that a direct send scope is missing. The demo mailbox does not fail doctor |
 
 Exit code `1` when the top-level `ok` is false. The report is still on stdout.
 
