@@ -22,6 +22,7 @@ import (
 	"github.com/vicgupta/dap/internal/guardrails"
 	"github.com/vicgupta/dap/internal/layout"
 	"github.com/vicgupta/dap/internal/model"
+	"github.com/vicgupta/dap/internal/theme"
 	"github.com/vicgupta/dap/internal/web"
 )
 
@@ -101,6 +102,8 @@ func (s *Server) Handler() http.Handler {
 	static, _ := fs.Sub(web.Static, "static")
 	fonts, _ := fs.Sub(static, "fonts")
 	mux.Handle("GET /fonts/", http.StripPrefix("/fonts/", http.FileServer(http.FS(fonts))))
+	mux.HandleFunc("GET /theme.css", file(static, "theme.css"))
+	mux.HandleFunc("GET /theme-boot.js", file(static, "theme-boot.js"))
 	mux.HandleFunc("GET /layout.css", file(static, "layout.css"))
 	mux.HandleFunc("GET /layout-boot.js", file(static, "layout-boot.js"))
 	mux.HandleFunc("GET /layout-logic.js", file(static, "layout-logic.js"))
@@ -147,13 +150,16 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing ui", http.StatusInternalServerError)
 		return
 	}
+	mode := s.App.Theme()
 	prefs := s.App.Layout()
 	raw, _ := json.Marshal(prefs)
 	boot := `<meta name="dap-token" content="` + s.App.AdminToken() + `" />` +
 		`<meta name="dap-version" content="0.1.0" />` +
+		`<meta name="dap-theme" content="` + mode + `" />` +
 		`<meta name="dap-density" content="` + prefs.PluginDensity() + `" />` +
 		`<meta name="dap-layout" content="` + html.EscapeString(string(raw)) + `" />`
 	page := injectRoot(bytes.Replace(b, []byte("<!--DAP_BOOT-->"), []byte(boot), 1), map[string]string{
+		"data-theme":      mode,
 		"data-density":    prefs.PluginDensity(),
 		"data-home-view":  prefs.Home.View,
 		"data-inbox-view": prefs.Inbox.View,
@@ -165,29 +171,41 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "layout": s.App.Layout()})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":     true,
+		"theme":  s.App.Theme(),
+		"layout": s.App.Layout(),
+	})
 }
 
 func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
-	// Only "layout" is written. A body that also carries "theme" (the appearance
-	// setting) does not erase that key on disk and does not require it here.
 	var body struct {
+		Theme  *string          `json:"theme"`
 		Layout *layout.Settings `json:"layout"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeErr(w, err)
 		return
 	}
-	if body.Layout == nil {
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "layout": s.App.Layout()})
-		return
+	mode := s.App.Theme()
+	if body.Theme != nil {
+		next, err := s.App.SetTheme(*body.Theme)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		mode = next
 	}
-	next, err := s.App.SetLayout(*body.Layout)
-	if err != nil {
-		writeErr(w, err)
-		return
+	prefs := s.App.Layout()
+	if body.Layout != nil {
+		next, err := s.App.SetLayout(*body.Layout)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		prefs = next
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "layout": next})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "theme": mode, "layout": prefs})
 }
 
 func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
@@ -543,8 +561,39 @@ func (s *Server) pluginRedirect(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "this plugin has no web UI", http.StatusNotFound)
 		return
 	}
-	density := layout.ChosenDensity(r.URL.Query().Get("density"), s.App.Layout().PluginDensity())
-	http.Redirect(w, r, withQuery(box.url, "density", density), http.StatusFound)
+	target := withQuery(box.url, "theme", chosenTheme(r, s.App.Theme()))
+	target = withQuery(target, "density", layout.ChosenDensity(r.URL.Query().Get("density"), s.App.Layout().PluginDensity()))
+	http.Redirect(w, r, target, http.StatusFound)
+}
+
+// injectTheme sets data-theme on the root element before the browser paints.
+func injectTheme(doc []byte, mode string) []byte {
+	mode = theme.Stored(mode)
+	attr := []byte(`<html lang="en" data-theme="` + mode + `">`)
+	if bytes.Contains(doc, []byte(`<html lang="en" data-theme="`)) {
+		start := bytes.Index(doc, []byte(`<html lang="en" data-theme="`))
+		end := bytes.Index(doc[start:], []byte(">"))
+		if end > 0 {
+			return append(append([]byte{}, doc[:start]...), append(attr, doc[start+end+1:]...)...)
+		}
+	}
+	return bytes.Replace(doc, []byte("<html lang=\"en\">"), attr, 1)
+}
+
+func chosenTheme(r *http.Request, fallback string) string {
+	q := strings.TrimSpace(r.URL.Query().Get("theme"))
+	if q == "" {
+		return theme.Stored(fallback)
+	}
+	mode, err := theme.Normalize(q)
+	if err != nil {
+		return theme.Stored(fallback)
+	}
+	return mode
+}
+
+func withThemeQuery(raw, mode string) string {
+	return withQuery(raw, "theme", theme.Stored(mode))
 }
 
 func withQuery(raw, key, value string) string {

@@ -30,9 +30,10 @@ The default is `127.0.0.1:7391`, stored in `config.json` by `da init`. `--addr` 
 - `dap-api`, `/api`
 - `dap-plugin`, the plugin name
 - `dap-inbox`, the admin origin's `/#/inbox`
+- `dap-theme`, `system`, `light`, or `dark`
 - `dap-density`, `comfortable` or `compact` (the Home density)
 
-The redirect to a plugin UI adds `?density=`. The sandbox also sets `<html data-density>` and serves `/layout.css` and `/layout-boot.js`. See [layout.md](layout.md).
+The redirect to a plugin UI adds `?theme=` and `?density=`. The sandbox sets `<html data-theme>` and `<html data-density>`, plus the matching meta tags, and serves `/theme.css`, `/theme-boot.js`, `/layout.css`, and `/layout-boot.js`. See [theme.md](theme.md) and [layout.md](layout.md).
 
 The sandbox proxies `/api/...` to the core's plugin API at `/v1/<name>/...` and forwards the bearer token. It serves the plugin's UI directory and the shared Inter fonts. Content-Security-Policy includes `frame-ancestors 'none'` and `connect-src 'self'`. The plugin origin cannot read the admin token.
 
@@ -41,7 +42,7 @@ The admin API used by the UI and the CLI, all under the admin token:
 | Method | Path |
 | --- | --- |
 | GET | `/api/home`, `/api/inbox`, `/api/activity`, `/api/guardrails`, `/api/plugins`, `/api/doctor`, `/api/approved`, `/api/connections` |
-| GET, PUT | `/api/settings` with `layout` (view, density, order, pinned, collapsed, sizes) |
+| GET, PUT | `/api/settings` with `theme` (`system`, `light`, `dark`) and `layout` (view, density, order, pinned, collapsed, sizes). Either key may be omitted. |
 | GET | `/api/context` and `/api/context?plugin=<name>` |
 | POST | `/api/inbox/{id}/approve`, `edit`, `reject`, `snooze` |
 | POST | `/api/guardrails` with `plugin`, `permission`, `decision` |
