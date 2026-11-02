@@ -44,9 +44,10 @@ This zip contains:
 
 Data stays in %USERPROFILE%\\.dap, or in %DAP_HOME% when that is set.
 
-install.ps1 copies these into %LOCALAPPDATA%\\DAP, unblocks them, puts
-that folder on your user PATH, and adds a Start menu shortcut named DAP
-that runs "da.exe run".
+install.ps1 copies da.exe into the current directory, unblocks that copy,
+and does not change PATH. From that directory:
+
+  .\\da.exe run
 
 SmartScreen
 -----------
@@ -60,13 +61,13 @@ In PowerShell, from the folder that contains da.exe:
   Unblock-File .\\da.exe
   Unblock-File .\\DAP.cmd
 
-The chromeless window needs Microsoft Edge or Google Chrome. Otherwise
-DAP opens the URL in the default browser.
+da.exe run opens the URL in the default browser. Chrome is not required.
+da.exe run --no-browser only prints the URL.
 
-Example plugins, after da.exe is on PATH:
+Example plugins, from this folder:
 
-  da plugin install %LOCALAPPDATA%\\DAP\\plugins\\mail-fake --approve
-  da plugin install %LOCALAPPDATA%\\DAP\\plugins\\inbox-followups --approve
+  .\\da.exe plugin install .\\plugins\\mail-fake --approve
+  .\\da.exe plugin install .\\plugins\\inbox-followups --approve
 
 Gmail and Outlook need an OAuth client id. The demo mailbox does not.
 EOF
@@ -75,4 +76,20 @@ EOF
   cd "$stage"
   zip -r -X "$out/DAP-${version}-windows-amd64.zip" da.exe DAP.cmd plugins INSTALL.txt LICENSE
 )
-echo "Windows artifact added to ${out}"
+
+# CLI zips are da.exe only. install.ps1 installs these into the current directory.
+cli_zip() {
+  local arch="$1"
+  local bin="$2"
+  local tmp
+  tmp=$(mktemp -d)
+  cp "$bin" "$tmp/da.exe"
+  (cd "$tmp" && zip -X "$out/da-${version}-windows-${arch}.zip" da.exe)
+  rm -rf "$tmp"
+}
+cli_zip amd64 "$stage/da.exe"
+arm_stage="$work/arm64"
+mkdir -p "$arm_stage"
+CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -trimpath -ldflags "$ldflags" -o "$arm_stage/da.exe" ./cmd/da
+cli_zip arm64 "$arm_stage/da.exe"
+echo "Windows artifacts added to ${out}"

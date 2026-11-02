@@ -138,8 +138,8 @@ Pick one:
 
      xattr -dr com.apple.quarantine DAP.app
 
-The window needs Google Chrome or Microsoft Edge for the chromeless app
-window. If neither is installed, DAP opens the URL in your default browser.
+da run opens the URL in the default browser. Chrome is not required.
+da run --no-browser only prints the URL.
 
 Plugins
 -------
@@ -230,13 +230,13 @@ One-time: \`gh auth login\`
 gh release download ${tag} --repo vicgupta/dap --pattern install.sh && sh install.sh
 \`\`\`
 
-\`install.sh\` uses that gh login, checks SHA256, installs DAP.app and \`da\`, and clears the quarantine flag. Double-click DAP.app to run \`da run\`. Data stays in ~/.dap or \$DAP_HOME.
+\`install.sh\` uses that gh login, checks SHA256, copies \`da\` into the current directory, and clears the quarantine flag on that binary. It does not change PATH. Run \`./da run\`. Data stays in ~/.dap or \$DAP_HOME.
 
 Direct downloads are on this release. Apple Silicon: \`DAP-${version}-macos-arm64.zip\` and \`da-${version}-darwin-arm64.tar.gz\`. Intel: the amd64 files. Universal: \`DAP-${version}-macos-universal.zip\` and \`da-${version}-darwin-universal.tar.gz\`. Checksums are in \`checksums.txt\`.
 
 Gatekeeper, if macOS blocks the first open: right-click DAP.app > Open; or System Settings > Privacy & Security > Open Anyway; or \`xattr -dr com.apple.quarantine DAP.app\`.
 
-The chromeless window needs Google Chrome or Microsoft Edge. Otherwise DAP opens your default browser. Example plugins need Python 3. Gmail and Outlook need an OAuth client id. See docs/release.md.
+da run opens the URL in the default browser. Chrome is not required. Example plugins need Python 3. Gmail and Outlook need an OAuth client id. See docs/release.md.
 EOF
 
 echo "Artifacts in ${out}"

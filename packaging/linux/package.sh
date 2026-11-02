@@ -43,22 +43,23 @@ This archive contains:
 
 Data stays in ~/.dap, or in \$DAP_HOME when that is set.
 
-Install the two commands next to each other:
+install.sh copies da into the current directory, checks SHA256, and does not
+change PATH. From that directory:
 
-  mkdir -p ~/.local/bin ~/.local/share/dap
-  install -m 755 da dap ~/.local/bin/
-  rm -rf ~/.local/share/dap/plugins
-  cp -a plugins ~/.local/share/dap/plugins
+  ./da run
 
-The release install.sh does that and checks SHA256.
+To install both commands yourself:
+
+  install -m 755 da dap /some/directory/
+  ./da run
 
 A .deb is also published (dap_${deb_version}_amd64.deb and the arm64 build).
 It installs /usr/bin/da, /usr/bin/dap, and /usr/share/dap/plugins.
 
   sudo dpkg -i dap_${deb_version}_amd64.deb
 
-The chromeless window needs Google Chrome, Chromium, or Microsoft Edge.
-Otherwise dap opens the URL with xdg-open.
+dap opens the URL in the default browser (xdg-open). Chrome is not required.
+da run --no-browser only prints the URL.
 
 Example plugins:
 
