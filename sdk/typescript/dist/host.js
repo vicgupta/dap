@@ -54,8 +54,16 @@ export class Host {
     secretDelete(account) {
         return this.call("POST", "/secret/delete", { account });
     }
-    mailThreads(provider) {
-        return this.call("GET", "/mail/threads?provider=" + encodeURIComponent(provider));
+    mailThreads(provider, query) {
+        const q = new URLSearchParams({ provider });
+        if (query?.since)
+            q.set("since", query.since);
+        if (query?.newer_than)
+            q.set("newer_than", query.newer_than);
+        return this.call("GET", "/mail/threads?" + q.toString());
+    }
+    mailDraft(req) {
+        return this.call("POST", "/mail/draft", req);
     }
     mailSend(req) {
         return this.call("POST", "/mail/send", req);

@@ -113,10 +113,23 @@ export interface CheckResult {
     decision: "allowed" | "ask_first" | "never";
     reason?: string;
 }
+export type MailProvider = "gmail" | "graph" | "outlook" | "fake";
+export interface MailQuery {
+    since?: string;
+    newer_than?: string;
+}
 export interface SendRequest {
-    provider: "gmail" | "graph" | "fake";
+    provider: MailProvider;
     card_id: string;
     to: string;
     subject: string;
     body: string;
+}
+export interface DraftRequest {
+    provider: MailProvider;
+    to?: string;
+    subject?: string;
+    body: string;
+    thread_id?: string;
+    message_id?: string;
 }

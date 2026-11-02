@@ -74,6 +74,9 @@ func Scaffold(opt Options) (string, error) {
 		desc = "A " + kind + " plugin named " + name + "."
 	}
 	perm := permissionName(name)
+	if mentionsMail(desc) {
+		perm = "mail.draft"
+	}
 	files := map[string]string{
 		"plugin.yaml": manifestYAML(name, kind, lang, desc, perm, opt.UI),
 		"AGENTS.md":   agentsMD(name, kind, lang),
@@ -146,12 +149,27 @@ func SuggestType(description string) string {
 	}
 }
 
+// mentionsMail is true when the description is about a mailbox.
+func mentionsMail(description string) bool {
+	d := strings.ToLower(description)
+	for _, word := range []string{"mail", "email", "gmail", "outlook", "inbox"} {
+		if strings.Contains(d, word) {
+			return true
+		}
+	}
+	return false
+}
+
 func permissionName(name string) string {
 	parts := strings.Split(name, "-")
 	if len(parts) == 1 {
 		return "demo." + parts[0]
 	}
-	return parts[0] + "." + strings.Join(parts[1:], "")
+	rest := strings.Join(parts[1:], "")
+	if rest == "" || rest[0] < 'a' || rest[0] > 'z' {
+		rest = "item"
+	}
+	return parts[0] + "." + rest
 }
 
 func manifestYAML(name, kind, lang, desc, perm string, ui bool) string {
@@ -170,6 +188,17 @@ func manifestYAML(name, kind, lang, desc, perm string, ui bool) string {
 	if ui {
 		uiBlock = "ui:\n  entry: ui/index.html\n  route: /plugins/" + name + "/\n  title: " + name + "\n"
 	}
+	perms := "  - name: " + perm + "\n" +
+		"    mode: " + mode + "\n" +
+		"    description: Record a local result for " + name + "\n"
+	if mentionsMail(desc) {
+		perms = "  - name: mail.read\n" +
+			"    mode: allowed\n" +
+			"    description: Read mail threads\n" +
+			"  - name: mail.draft\n" +
+			"    mode: ask_first\n" +
+			"    description: Prepare a draft reply. Nothing is sent.\n"
+	}
 	return "name: " + name + "\n" +
 		"version: 0.1.0\n" +
 		"min_dap_version: 0.1.0\n" +
@@ -179,9 +208,7 @@ func manifestYAML(name, kind, lang, desc, perm string, ui bool) string {
 		runtime +
 		"entrypoint: " + entry + "\n" +
 		"permissions:\n" +
-		"  - name: " + perm + "\n" +
-		"    mode: " + mode + "\n" +
-		"    description: Record a local result for " + name + "\n" +
+		perms +
 		sched + uiBlock
 }
 

@@ -9,7 +9,7 @@ func agentsMD(name, kind, lang string) string {
 	}
 	return `# Build this DAP plugin
 
-You are editing the plugin in this directory (` + name + `, type ` + kind + `, language ` + lang + `). DAP does not host a model. You are the user's coding agent. Follow this file. The long form is docs/plugin-authoring.md in the DAP repo, and the machine-readable contract is schemas/plugin.schema.json.
+You are editing the plugin in this directory (` + name + `, type ` + kind + `, language ` + lang + `). DAP does not host a model. You are the user's coding agent. Follow this file. Work only in this folder. Use the vendored SDK here. Do not clone the DAP repository.
 
 ` + prefer + `
 
@@ -17,6 +17,7 @@ You are editing the plugin in this directory (` + name + `, type ` + kind + `, l
 ## Rules
 
 - Speak JSON-RPC 2.0, one JSON object per line, on stdout. Logs go to stderr. Never print a prompt, a log line, or a stack trace on stdout.
+- Delete the DAP_SCAFFOLD_STARTER line from the source once the real plugin replaces the idle starter.
 - Implement initialize, watch, propose, act, report, and shutdown. shutdown receives {"reason":"quit"} and returns {"ok": true}. Unknown methods return a JSON-RPC error.
 - Declare the smallest permission list that does the job. Modes are only allowed or ask_first. An undeclared permission is denied.
 - Anything that sends, spends, or deletes must be a decision card with that effect. Do not perform it in watch or propose. act runs only after the person approves.
@@ -28,13 +29,13 @@ You are editing the plugin in this directory (` + name + `, type ` + kind + `, l
 
 ## Self-check
 
-From the DAP repo, or with da on PATH:
+From this folder, with da on PATH, run the build and then:
 
 ` + "```" + `
 da plugin validate .
 ` + "```" + `
 
-Fix every check that is not ok. The validator output is the bug list. Do not claim success until it passes.
+Fix every check that is not ok. The validator output is the bug list. Do not claim success until it passes. Do not finish while the starter marker is still in the source.
 
 ## Protocol reminder
 
@@ -63,6 +64,7 @@ func pythonSrc(name, kind, perm string) string {
 	cards := pythonCards(name, kind, perm)
 	return `#!/usr/bin/env python3
 """DAP plugin ` + name + `. Stdout is JSON-RPC only. Logs go to stderr."""
+# DAP_SCAFFOLD_STARTER
 import dap_plugin
 
 def initialize(params, api):
@@ -99,8 +101,12 @@ func pythonCards(name, kind, perm string) string {
 	if kind == "capability" {
 		return "[]"
 	}
+	title := "Review " + name
+	if perm == "mail.draft" {
+		title = "Draft reply"
+	}
 	return `[{
-            "title": "Review ` + name + `",
+            "title": "` + title + `",
             "summary": "Nothing is sent.",
             "kind": "action",
             "permission": "` + perm + `",
@@ -167,11 +173,16 @@ func tsConfig() string {
 }
 
 func tsSrc(name, kind, perm string) string {
+	title := name
+	if perm == "mail.draft" {
+		title = "Draft reply"
+	}
 	cards := "[]"
 	if kind != "capability" {
-		cards = `[{ title: "` + name + `", summary: "Nothing is sent.", kind: "action", permission: "` + perm + `", effects: [], editable: true }]`
+		cards = `[{ title: "` + title + `", summary: "Nothing is sent.", kind: "action", permission: "` + perm + `", effects: [], editable: true }]`
 	}
-	return `import { serve, type PluginHandler } from "../vendor/plugin-sdk/dist/index.js";
+	return `// DAP_SCAFFOLD_STARTER
+import { serve, type PluginHandler } from "../vendor/plugin-sdk/dist/index.js";
 
 const plugin: PluginHandler = {
   async initialize() {
@@ -222,11 +233,16 @@ test("initialize answers the DAP contract", async () => {
 }
 
 func nodeSrc(name, kind, perm string) string {
+	title := name
+	if perm == "mail.draft" {
+		title = "Draft reply"
+	}
 	cards := "[]"
 	if kind != "capability" {
-		cards = `[{ title: "` + name + `", summary: "Nothing is sent.", kind: "action", permission: "` + perm + `", effects: [], editable: true }]`
+		cards = `[{ title: "` + title + `", summary: "Nothing is sent.", kind: "action", permission: "` + perm + `", effects: [], editable: true }]`
 	}
 	return `#!/usr/bin/env node
+// DAP_SCAFFOLD_STARTER
 // DAP plugin ` + name + `. Stdout is JSON-RPC only. Logs go to stderr.
 const readline = require("readline");
 

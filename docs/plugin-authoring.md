@@ -108,7 +108,18 @@ What a declaration allows:
 
 A permission does not grant network, shell, or another plugin's files by itself. Those are your process. Do not take them unless the description says so.
 
-`mail.read` allows `GET /mail/threads?provider=gmail|graph|fake`. `mail.send` allows `POST /mail/send`, and only when the body includes `card_id` for an approved card whose effects include `sends`. The SDK helpers are `mailThreads` and `mailSend` in TypeScript, and `mail_threads` and `mail_send` in Python. They never return an access token or a refresh token. Declare `mail.draft` when you only prepare text. A send still waits for a person even if you also declare the permission as `allowed`.
+`mail.read` allows `GET /mail/threads?provider=gmail|graph|outlook|fake`. `outlook` is the same mailbox as `graph`. The mailbox has to be connected under Connections before a read returns threads. Gmail and Outlook go through Composio unless a direct client is configured. The response never includes an access token or a refresh token.
+
+Optional query parameters limit the window:
+
+| Parameter | Form | Example |
+| --- | --- | --- |
+| `since` | RFC3339 timestamp | `2026-11-01T00:00:00Z` |
+| `newer_than` | `30m`, `24h`, or `7d` | `1d` for the last day, `24h` for the last 24 hours |
+
+With neither parameter, Gmail and Outlook return about the last 30 days. Composio Gmail receives the window as a Gmail search (`newer_than:1d` or `after:<unix>`). Composio Outlook and direct Microsoft Graph receive `receivedDateTime ge <timestamp>`, and the host also drops threads older than the cutoff. A plugin that asks for the last 24 hours calls `mailThreads("gmail", { newer_than: "24h" })` or `mail_threads("outlook", newer_than="24h")`.
+
+`mail.draft` allows `POST /mail/draft`, which saves a draft and does not send. `mail.send` allows `POST /mail/send`, and only when the body includes `card_id` for an approved card whose effects include `sends`. The SDK helpers are `mailThreads`, `mailDraft`, and `mailSend` in TypeScript, and `mail_threads`, `mail_draft`, and `mail_send` in Python. A send still waits for a person even if you also declare the permission as `allowed`. Declare `mail.draft` when you only prepare text, and offer that text as a change card.
 
 A person can tighten a permission (`allowed` to `ask_first`, or either to `never`). They cannot loosen one. Your manifest cannot override that.
 
@@ -424,7 +435,7 @@ if __name__ == "__main__":
     })
 ```
 
-`dap_plugin.Host` wraps config, scratch state, secrets, and `mail_threads` / `mail_send`. `mail_send` still requires an approved card. The helper never returns an OAuth token. Gmail and Outlook tokens stay with Composio; the host stores only the API key and connection ids. `POST /mail/draft` creates a draft without sending.
+`dap_plugin.Host` wraps config, scratch state, secrets, and `mail_threads` / `mail_draft` / `mail_send`. `mail_threads(provider, since="", newer_than="")` reads a connected mailbox. `provider` is `gmail`, `graph`, `outlook`, or `fake`. `mail_draft` saves a draft and does not send. `mail_send` still requires an approved card. The helper never returns an OAuth token. Gmail and Outlook tokens stay with Composio; the host stores only the API key and connection ids. `POST /mail/draft` creates a draft without sending.
 
 ## Checklist
 

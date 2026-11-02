@@ -67,6 +67,12 @@ type DeltaCursor struct {
 
 // ListThreads reads inbox and sent-items deltas and folds them into conversations.
 func (c *Client) ListThreads(ctx context.Context, token, me string, cur DeltaCursor) ([]mailbox.Thread, DeltaCursor, error) {
+	return c.ListThreadsSince(ctx, token, me, cur, time.Time{})
+}
+
+// ListThreadsSince reads the same folders and drops threads older than since.
+// A zero since keeps every thread the provider returned.
+func (c *Client) ListThreadsSince(ctx context.Context, token, me string, cur DeltaCursor, since time.Time) ([]mailbox.Thread, DeltaCursor, error) {
 	inbox, nextInbox, err := c.delta(ctx, token, "/me/mailFolders/inbox/messages/delta", cur.Inbox)
 	if err != nil {
 		return nil, cur, err
@@ -129,7 +135,11 @@ func (c *Client) ListThreads(ctx context.Context, token, me string, cur DeltaCur
 	}
 	out := make([]mailbox.Thread, 0, len(order))
 	for _, id := range order {
-		out = append(out, byConv[id].th)
+		th := byConv[id].th
+		if !since.IsZero() && (th.LastAt.IsZero() || th.LastAt.Before(since)) {
+			continue
+		}
+		out = append(out, th)
 	}
 	return out, cur, nil
 }

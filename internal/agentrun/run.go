@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -20,11 +19,26 @@ type Spec struct {
 	Args []string // arguments before the prompt
 }
 
+// claudeAllowedTools is the headless allow-list. acceptEdits covers writes in
+// the working directory. Bash stays limited to the build and the validator.
+// Rule syntax is the Claude Code permission form: a space before * is a prefix match.
+// https://code.claude.com/docs/en/headless
+const claudeAllowedTools = "Read,Edit,Write,Bash(npm *),Bash(npx *),Bash(node *),Bash(da plugin validate *)"
+
+// openCodePermissions allows edits in the working directory and the same
+// build commands. external_directory stays denied so the run cannot write
+// outside the draft. https://opencode.ai/docs/permissions/
+const openCodePermissions = `{"permission":{"read":"allow","edit":"allow","external_directory":"deny","webfetch":"deny","websearch":"deny","bash":{"*":"deny","npm *":"allow","npx *":"allow","node *":"allow","da plugin validate":"allow","da plugin validate *":"allow"}}}`
+
 // Agents is the runner abstraction the Builder can reuse later.
+// Codex exec is read-only unless --sandbox workspace-write is set, and it
+// refuses a directory that is not a git checkout unless --skip-git-repo-check
+// is set. Drafts are not repositories.
+// https://developers.openai.com/codex/noninteractive
 var Agents = []Spec{
-	{ID: "claude", Hint: "Install Claude Code and run claude once so this machine is logged in. https://docs.anthropic.com/en/docs/claude-code", Args: []string{"-p"}},
-	{ID: "codex", Hint: "Install Codex and log in with your ChatGPT account. The command is codex exec.", Args: []string{"exec"}},
-	{ID: "opencode", Hint: "Install OpenCode and log in. The command is opencode run.", Args: []string{"run"}},
+	{ID: "claude", Hint: "Install Claude Code and run claude once so this machine is logged in. https://docs.anthropic.com/en/docs/claude-code", Args: []string{"-p", "--permission-mode", "acceptEdits", "--allowedTools", claudeAllowedTools}},
+	{ID: "codex", Hint: "Install Codex and log in with your ChatGPT account. The command is codex exec.", Args: []string{"exec", "--sandbox", "workspace-write", "--skip-git-repo-check"}},
+	{ID: "opencode", Hint: "Install OpenCode and log in. The command is opencode run.", Args: []string{"run", "--auto"}},
 }
 
 // Info is a detected agent.
@@ -35,8 +49,9 @@ type Info struct {
 	Hint  string `json:"hint"`
 }
 
-// LookPath is replaced in tests.
-var LookPath = exec.LookPath
+// LookPath is replaced in tests. The default also searches Homebrew, nvm,
+// Volta, and ~/.local/bin so a macOS app launched outside a shell can find claude and node.
+var LookPath = lookAugmented
 
 // Detect reports which agent CLIs are on PATH.
 func Detect() []Info {
@@ -83,7 +98,7 @@ func Run(ctx context.Context, req Request) error {
 	args := append(append([]string{}, spec.Args...), req.Prompt)
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = req.Dir
-	cmd.Env = os.Environ()
+	cmd.Env = commandEnv(req.Agent)
 	setProcGroup(cmd)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -122,18 +137,30 @@ func Run(ctx context.Context, req Request) error {
 	return nil
 }
 
+// PromptInput is one instruction to the coding agent.
+type PromptInput struct {
+	Description string
+	FixReport   string
+	// DirName is the draft folder. A draft- prefix is a placeholder the agent must replace.
+	DirName string
+}
+
 // Prompt is what DAP tells the agent. The plugin directory already contains AGENTS.md.
-func Prompt(description string, fixReport string) string {
+func Prompt(in PromptInput) string {
 	var b strings.Builder
-	b.WriteString("Read AGENTS.md and implement the DAP plugin in this directory. ")
+	b.WriteString("Work only in the current folder using AGENTS.md and the vendored SDK, never clone the repo, and run the build and da plugin validate before finishing. ")
+	b.WriteString("Remove the DAP_SCAFFOLD_STARTER marker and replace the idle starter with the plugin the user asked for. ")
 	b.WriteString("Do not bypass guardrails. Use the least permissions that work. ")
-	b.WriteString("Do not handle raw tokens. Stdout of the plugin must be JSON-RPC only.\n\n")
-	b.WriteString("User request:\n")
-	b.WriteString(strings.TrimSpace(description))
+	b.WriteString("Do not handle raw tokens. Stdout of the plugin must be JSON-RPC only.\n")
+	if strings.HasPrefix(in.DirName, "draft-") {
+		b.WriteString("This folder name is a placeholder. Set name in plugin.yaml to a short kebab-case name (lowercase letters, numbers, and hyphens) and do not leave the draft- placeholder.\n")
+	}
+	b.WriteString("\nUser request:\n")
+	b.WriteString(strings.TrimSpace(in.Description))
 	b.WriteString("\n")
-	if strings.TrimSpace(fixReport) != "" {
+	if strings.TrimSpace(in.FixReport) != "" {
 		b.WriteString("\n`da plugin validate` failed. Fix every check below and do not stop until the plugin would pass:\n")
-		b.WriteString(fixReport)
+		b.WriteString(in.FixReport)
 		b.WriteString("\n")
 	}
 	return b.String()

@@ -316,7 +316,12 @@ func (a *App) routePlugin(w http.ResponseWriter, r *http.Request, plugin, rest s
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "data": json.RawMessage(raw)})
 	case r.Method == http.MethodGet && rest == "mail/threads":
-		threads, err := a.MailThreads(r.Context(), plugin, r.URL.Query().Get("provider"))
+		opt, err := mail.ParseListOptions(r.URL.Query().Get("since"), r.URL.Query().Get("newer_than"))
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		threads, err := a.MailThreadsQuery(r.Context(), plugin, r.URL.Query().Get("provider"), opt)
 		if err != nil {
 			writeErr(w, err)
 			return

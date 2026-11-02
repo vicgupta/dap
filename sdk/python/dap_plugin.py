@@ -2,6 +2,7 @@
 
 import json
 import sys
+import urllib.parse
 import urllib.request
 
 
@@ -62,8 +63,23 @@ class Host:
     def secret_delete(self, account):
         return self._call("POST", "/secret/delete", {"account": account})
 
-    def mail_threads(self, provider):
-        return self._call("GET", "/mail/threads?provider=" + provider)
+    def mail_threads(self, provider, since="", newer_than=""):
+        params = {"provider": provider}
+        if since:
+            params["since"] = since
+        if newer_than:
+            params["newer_than"] = newer_than
+        return self._call("GET", "/mail/threads?" + urllib.parse.urlencode(params))
+
+    def mail_draft(self, provider, body, to="", subject="", thread_id="", message_id=""):
+        return self._call("POST", "/mail/draft", {
+            "provider": provider,
+            "body": body,
+            "to": to,
+            "subject": subject,
+            "thread_id": thread_id,
+            "message_id": message_id,
+        })
 
     def mail_send(self, provider, card_id, to, subject, body):
         return self._call("POST", "/mail/send", {

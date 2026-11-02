@@ -113,6 +113,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /layout.css", file(static, "layout.css"))
 	mux.HandleFunc("GET /layout-boot.js", file(static, "layout-boot.js"))
 	mux.HandleFunc("GET /layout-logic.js", file(static, "layout-logic.js"))
+	mux.HandleFunc("GET /create-logic.js", file(static, "create-logic.js"))
 	mux.HandleFunc("GET /app.css", file(static, "app.css"))
 	mux.HandleFunc("GET /app.js", file(static, "app.js"))
 	mux.HandleFunc("GET /favicon.svg", file(static, "favicon.svg"))
@@ -505,7 +506,16 @@ func (s *Server) createPropose(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "card": card})
+	path := ""
+	var payload struct {
+		Install *struct {
+			Path string `json:"path"`
+		} `json:"install"`
+	}
+	if err := json.Unmarshal(card.Payload, &payload); err == nil && payload.Install != nil {
+		path = payload.Install.Path
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "card": card, "path": path})
 }
 
 func (s *Server) connections(w http.ResponseWriter, r *http.Request) {

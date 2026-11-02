@@ -817,8 +817,11 @@ html[data-density="compact"] .chat-shell { padding-top: 8px; }
 .type-row { display: flex; flex-wrap: wrap; gap: var(--layout-gap, 8px); margin-top: 8px; }
 .type-choice { display: flex; flex-direction: column; align-items: flex-start; text-align: left; min-width: 180px; }
 .type-choice.selected, button.ghost.selected { border-color: var(--selected-border); box-shadow: var(--selected-ring); }
+.create-status { margin: 0 0 8px; font-size: 15px; font-weight: 650; letter-spacing: -0.01em; }
+.create-lead { margin: 0; }
+.create-log-label { margin: 14px 0 6px; font-size: 12px; font-weight: 650; color: var(--muted); }
 .create-log {
-  margin: 12px 0 0;
+  margin: 0;
   max-height: 320px;
   overflow: auto;
   padding: 12px;

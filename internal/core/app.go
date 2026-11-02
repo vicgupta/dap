@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vicgupta/dap/internal/agentrun"
 	"github.com/vicgupta/dap/internal/layout"
 	"github.com/vicgupta/dap/internal/ledger"
 	"github.com/vicgupta/dap/internal/lockfile"
@@ -88,6 +89,7 @@ type FileConfig struct {
 
 // Open locks the data directory and loads state. It does not start plugins.
 func Open(dir string) (*App, error) {
+	agentrun.UseHostPath()
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, err

@@ -280,22 +280,42 @@ func (b *Broker) Check(ctx context.Context, provider string) Status {
 
 // Threads lists conversations for a connected mailbox.
 func (b *Broker) Threads(ctx context.Context, provider string) ([]Thread, error) {
+	return b.ThreadsQuery(ctx, provider, ListOptions{})
+}
+
+// ThreadsQuery lists conversations, optionally limited by since or newer_than.
+func (b *Broker) ThreadsQuery(ctx context.Context, provider string, opt ListOptions) ([]Thread, error) {
+	threads, err := b.threads(ctx, provider, opt)
+	if err != nil {
+		return nil, err
+	}
+	return filterThreads(threads, opt, b.clock()), nil
+}
+
+func (b *Broker) clock() time.Time {
+	if b.now != nil {
+		return b.now()
+	}
+	return time.Now()
+}
+
+func (b *Broker) threads(ctx context.Context, provider string, opt ListOptions) ([]Thread, error) {
 	b.prepare()
 	switch provider {
 	case "fake":
-		return b.fake.Threads(b.now()), nil
+		return b.fake.Threads(b.clock()), nil
 	case "gmail":
 		if !b.useDirect("gmail") {
-			return b.composioThreads(ctx, "gmail")
+			return b.composioThreads(ctx, "gmail", opt)
 		}
 		blob, err := b.ensureFresh(ctx, "gmail")
 		if err != nil {
 			return nil, err
 		}
-		return (&gmail.Client{API: b.GmailAPI}).ListThreads(ctx, blob.AccessToken, blob.Account)
+		return (&gmail.Client{API: b.GmailAPI}).ListThreadsQuery(ctx, blob.AccessToken, blob.Account, gmailSearch(opt, b.clock()))
 	case "graph", "outlook":
 		if !b.useDirect("outlook") {
-			return b.composioThreads(ctx, "outlook")
+			return b.composioThreads(ctx, "outlook", opt)
 		}
 		blob, err := b.ensureFresh(ctx, "graph")
 		if err != nil {
@@ -304,7 +324,8 @@ func (b *Broker) Threads(ctx context.Context, provider string) ([]Thread, error)
 		client := &graph.Client{API: b.GraphAPI, OnThrottle: func(th httpx.Throttle) {
 			_ = b.noteThrottle("graph", th.Until, th.Status)
 		}}
-		threads, cur, err := client.ListThreads(ctx, blob.AccessToken, blob.Account, graph.DeltaCursor{Inbox: blob.DeltaInbox, Sent: blob.DeltaSent})
+		since, _ := opt.Cutoff(b.clock())
+		threads, cur, err := client.ListThreadsSince(ctx, blob.AccessToken, blob.Account, graph.DeltaCursor{Inbox: blob.DeltaInbox, Sent: blob.DeltaSent}, since)
 		if err != nil {
 			return nil, err
 		}
@@ -316,7 +337,7 @@ func (b *Broker) Threads(ctx context.Context, provider string) ([]Thread, error)
 		return threads, nil
 	default:
 		if !b.useDirect(provider) {
-			return b.composioThreads(ctx, provider)
+			return b.composioThreads(ctx, provider, opt)
 		}
 		return nil, errors.New("unknown mail provider")
 	}

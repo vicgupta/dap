@@ -1,4 +1,4 @@
-import type { CardDraft, CheckRequest, CheckResult, Evidence, InitParams, SendRequest, Tile } from "./types.js";
+import type { CardDraft, CheckRequest, CheckResult, DraftRequest, Evidence, InitParams, MailProvider, MailQuery, SendRequest, Tile } from "./types.js";
 export declare class Host {
     private readonly init;
     constructor(init: InitParams);
@@ -19,8 +19,9 @@ export declare class Host {
     }>;
     secretSet(account: string, value: string): Promise<unknown>;
     secretDelete(account: string): Promise<unknown>;
-    mailThreads(provider: "gmail" | "graph" | "fake"): Promise<{
+    mailThreads(provider: MailProvider, query?: MailQuery): Promise<{
         threads: unknown[];
     }>;
+    mailDraft(req: DraftRequest): Promise<unknown>;
     mailSend(req: SendRequest): Promise<unknown>;
 }
