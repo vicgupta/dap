@@ -19,9 +19,9 @@ Core version: `0.1.0` (`internal/version`). Go `1.22` or newer.
 | [docs/plugin-authoring.md](docs/plugin-authoring.md) | How to add another Composio toolkit |
 | [docs/release.md](docs/release.md) | Release install, Gatekeeper, SmartScreen, checksums |
 
-## Install the macOS pre-release
+## Install
 
-[v0.1.0-alpha.1](https://github.com/vicgupta/dap/releases/tag/v0.1.0-alpha.1) is a private GitHub pre-release: Apple Silicon, Intel, and a universal `DAP.app`, plus `da` CLI tarballs. The repo stays private, so these links open only when you are logged into GitHub.
+[v0.1.0-alpha.4](https://github.com/vicgupta/dap/releases/tag/v0.1.0-alpha.4) is a private GitHub pre-release of the `da` CLI: macOS (Apple Silicon, Intel, and universal) and Windows (amd64 and arm64). The repo stays private, so these links open only when you are logged into GitHub. There is no `DAP.app` in this release.
 
 One-time:
 
@@ -29,48 +29,30 @@ One-time:
 gh auth login
 ```
 
-Then:
+The installers copy `da` or `da.exe` into the current directory, check SHA256, and do not change `PATH`. They do not use sudo or an administrator prompt. `DAP_INSTALL_DIR` (or `--dir` / `-InstallDir`) picks another directory. Data stays in `~/.dap` on macOS and Linux, `%USERPROFILE%\.dap` on Windows, or `$DAP_HOME` when that is set.
+
+macOS, from the folder where you want `./da`:
 
 ```bash
-gh release download v0.1.0-alpha.1 --repo vicgupta/dap --pattern install.sh && sh install.sh
+gh release download v0.1.0-alpha.4 --repo vicgupta/dap --pattern install.sh && sh install.sh
+./da run
 ```
 
-`install.sh` uses that `gh` login. It checks SHA256, installs `DAP.app` and `da`, and clears the quarantine flag. Double-click `DAP.app` to run `da run`. Data stays in `~/.dap` (or `$DAP_HOME`).
+`install.sh` clears the quarantine flag on that `da` binary.
 
-Direct downloads:
-
-| File | Use |
-| --- | --- |
-| [DAP-0.1.0-alpha.1-macos-arm64.zip](https://github.com/vicgupta/dap/releases/download/v0.1.0-alpha.1/DAP-0.1.0-alpha.1-macos-arm64.zip) | Apple Silicon app |
-| [DAP-0.1.0-alpha.1-macos-amd64.zip](https://github.com/vicgupta/dap/releases/download/v0.1.0-alpha.1/DAP-0.1.0-alpha.1-macos-amd64.zip) | Intel app |
-| [DAP-0.1.0-alpha.1-macos-universal.zip](https://github.com/vicgupta/dap/releases/download/v0.1.0-alpha.1/DAP-0.1.0-alpha.1-macos-universal.zip) | Both CPUs |
-| [da-0.1.0-alpha.1-darwin-arm64.tar.gz](https://github.com/vicgupta/dap/releases/download/v0.1.0-alpha.1/da-0.1.0-alpha.1-darwin-arm64.tar.gz) | Apple Silicon CLI |
-| [da-0.1.0-alpha.1-darwin-amd64.tar.gz](https://github.com/vicgupta/dap/releases/download/v0.1.0-alpha.1/da-0.1.0-alpha.1-darwin-amd64.tar.gz) | Intel CLI |
-| [da-0.1.0-alpha.1-darwin-universal.tar.gz](https://github.com/vicgupta/dap/releases/download/v0.1.0-alpha.1/da-0.1.0-alpha.1-darwin-universal.tar.gz) | Universal CLI |
-| [checksums.txt](https://github.com/vicgupta/dap/releases/download/v0.1.0-alpha.1/checksums.txt) | SHA256 |
-
-Gatekeeper, checksum checks, and the example plugins: [docs/release.md](docs/release.md).
-
-The same `gh release download` command works for any single file:
-
-```bash
-gh release download v0.1.0-alpha.1 --repo vicgupta/dap --pattern DAP-0.1.0-alpha.1-macos-arm64.zip
-```
-
-## Linux and Windows
-
-v0.1.0-alpha.1 does not include Linux or Windows archives. After this packaging change is on `main`, the next `v*` tag builds them. `install.sh` on Linux and `install.ps1` on Windows use `gh release download` and check SHA256. Neither script embeds a token.
-
-```bash
-gh release download <tag> --repo vicgupta/dap --pattern install.sh && sh install.sh
-```
+Windows, from the folder where you want `.\da.exe`. A standard user can run this. `-Scope Process` applies only to this PowerShell process:
 
 ```powershell
-gh release download <tag> --repo vicgupta/dap --pattern install.ps1
-powershell -ExecutionPolicy Bypass -File .\install.ps1
+gh release download v0.1.0-alpha.4 --repo vicgupta/dap --pattern install.ps1
+powershell -ExecutionPolicy Bypass -Scope Process -File .\install.ps1
+.\da.exe run
 ```
 
-Those tags publish `da-<version>-linux-amd64.tar.gz`, `da-<version>-linux-arm64.tar.gz`, `dap_<version>_amd64.deb` and the arm64 deb (Debian version uses `~` in place of the pre-release hyphen), and `DAP-<version>-windows-amd64.zip`. Names and SmartScreen steps are in [docs/release.md](docs/release.md).
+`install.ps1` runs `Unblock-File` on the copied exe. The exe is unsigned, so SmartScreen can still say **Windows protected your PC** the first time. Choose **More info**, then **Run anyway**. That dialog is not a request for administrator rights.
+
+Direct downloads are on the release: `da-0.1.0-alpha.4-darwin-arm64.tar.gz`, `da-0.1.0-alpha.4-darwin-amd64.tar.gz`, `da-0.1.0-alpha.4-darwin-universal.tar.gz`, `da-0.1.0-alpha.4-windows-amd64.zip`, `da-0.1.0-alpha.4-windows-arm64.zip`, and `checksums.txt`. Each Windows zip contains only `da.exe`. Gatekeeper and SmartScreen details: [docs/release.md](docs/release.md).
+
+v0.1.0-alpha.4 does not include Linux archives. A later tag's `install.sh` installs the Linux `da` the same way, into the current directory. The `.deb` packages are a separate path and do use `sudo`.
 
 ## Run
 

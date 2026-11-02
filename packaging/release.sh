@@ -71,10 +71,10 @@ Windows (PowerShell):
 
 \`\`\`powershell
 gh release download ${tag} --repo vicgupta/dap --pattern install.ps1
-powershell -ExecutionPolicy Bypass -File .\\install.ps1
+powershell -ExecutionPolicy Bypass -Scope Process -File .\\install.ps1
 \`\`\`
 
-The installers use that gh login, check SHA256, and install \`da\` plus a launcher (\`DAP.app\`, \`dap\`, or \`DAP.cmd\`). Data stays in ~/.dap, %USERPROFILE%\\.dap, or \$DAP_HOME.
+The installers use that gh login, check SHA256, and copy \`da\` or \`da.exe\` into the current directory. They do not change PATH and do not need sudo or an administrator prompt. Run \`./da run\` or \`.\\da.exe run\`. Data stays in ~/.dap, %USERPROFILE%\\.dap, or \$DAP_HOME.
 
 macOS Gatekeeper: right-click DAP.app > Open, or System Settings > Privacy & Security > Open Anyway, or \`xattr -dr com.apple.quarantine DAP.app\`.
 
