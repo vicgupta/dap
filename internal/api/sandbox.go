@@ -105,7 +105,7 @@ func (b *sandbox) handler() http.Handler {
 		switch {
 		case strings.HasPrefix(r.URL.Path, "/api/"):
 			b.proxy(w, r)
-		case r.URL.Path == "/layout.css" || r.URL.Path == "/layout-boot.js":
+		case r.URL.Path == "/layout.css" || r.URL.Path == "/layout-boot.js" || r.URL.Path == "/theme.css" || r.URL.Path == "/theme-boot.js":
 			b.coreStatic(w, r)
 		case strings.HasPrefix(r.URL.Path, "/fonts/"):
 			b.fonts(w, r)
@@ -123,14 +123,17 @@ func (b *sandbox) serveIndex(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing plugin ui", http.StatusNotFound)
 		return
 	}
+	mode := chosenTheme(r, b.app.Theme())
 	density := layout.ChosenDensity(r.URL.Query().Get("density"), b.app.Layout().PluginDensity())
 	inbox := strings.TrimRight(b.parent, "/") + "/#/inbox"
 	boot := `<meta name="dap-token" content="` + html.EscapeString(b.app.Token(b.name)) + `" />` +
 		`<meta name="dap-api" content="/api" />` +
 		`<meta name="dap-plugin" content="` + html.EscapeString(b.name) + `" />` +
 		`<meta name="dap-inbox" content="` + html.EscapeString(inbox) + `" />` +
+		`<meta name="dap-theme" content="` + mode + `" />` +
 		`<meta name="dap-density" content="` + density + `" />`
 	page := injectRoot(bytes.Replace(raw, []byte("<!--DAP_BOOT-->"), []byte(boot), 1), map[string]string{
+		"data-theme":   mode,
 		"data-density": density,
 	})
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

@@ -19,42 +19,48 @@
   font-style: normal;
   font-display: swap;
 }
-:root {
-  --bg: #f4f5f7;
-  --ink: #1b1c21;
-  --muted: #6a7080;
-  --line: #e6e7ee;
-  --accent: #4f46e5;
-  --accent-soft: #eef0ff;
-  --warn: #c2410c;
-  --warn-bg: #fff7ed;
-  --good: #157a3b;
-  --good-bg: #ecfdf3;
-  --font: Inter, ui-sans-serif, system-ui, sans-serif;
-}
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 14px; letter-spacing: -0.011em; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 14px;
+  letter-spacing: -0.011em;
+}
 .wrap { max-width: 760px; margin: 0 auto; padding: 28px 20px 64px; }
 .top { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
 h1 { margin: 0; font-size: 24px; font-weight: 600; }
 .sub { color: var(--muted); margin: 4px 0 0; }
-a { color: var(--accent); }
+a { color: var(--accent-ink); }
 .banner { margin: 16px 0; padding: 10px 12px; border-radius: 12px; background: var(--warn-bg); color: var(--warn); font-weight: 500; }
 .banner.ok { background: var(--good-bg); color: var(--good); }
-.card { background: var(--surface, #fff); border: 1px solid var(--line); border-radius: var(--card-radius, 16px); padding: var(--card-pad, 14px); margin-top: var(--stack-gap, 12px); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--card-radius, 16px); padding: var(--card-pad, 14px); margin-top: var(--stack-gap, 12px); box-shadow: var(--shadow); }
 html[data-density="compact"] h1 { font-size: 20px; }
 html[data-density="compact"] .wrap { padding-top: 16px; }
 .step-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
-.n { width: 24px; height: 24px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
-input, textarea { width: 100%; border: 1px solid #d9dbe3; border-radius: 10px; padding: 8px 10px; font: inherit; margin-top: 8px; }
+.n { width: 24px; height: 24px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-ink); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
+input, textarea {
+  width: 100%;
+  border: 1px solid var(--control-border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--field);
+  margin-top: 8px;
+}
 textarea { min-height: 64px; resize: vertical; }
 .chips { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
-.chips label { border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; font-size: 13px; font-weight: 500; }
+.chips label { border: 1px solid var(--line-strong); border-radius: 999px; padding: 4px 10px; font-size: 13px; font-weight: 500; color: var(--ink); }
 .chips label.on { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
-button { font: inherit; cursor: pointer; border-radius: 10px; border: 1px solid #d9dbe3; background: white; padding: 7px 12px; font-weight: 600; }
-button.primary { background: var(--accent); color: white; border-color: transparent; }
+button { font: inherit; cursor: pointer; border-radius: 10px; border: 1px solid var(--control-border); background: var(--surface); color: var(--ink); padding: 7px 12px; font-weight: 600; }
+button.primary { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+button.primary:hover { background: var(--accent-hover); }
 button.quiet { border-color: transparent; color: var(--muted); background: transparent; }
+button.quiet:hover { background: var(--hover); }
 .row { display: flex; gap: 8px; align-items: center; margin-top: 16px; }
 .schedule { display: flex; gap: 8px; align-items: center; }
 .schedule input { width: 120px; margin: 0; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+::placeholder { color: var(--faint); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

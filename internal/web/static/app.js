@@ -22,6 +22,8 @@ const state = {
   quitConfirm: null,
   quitPending: false,
   quitting: false,
+  theme: document.documentElement.getAttribute("data-theme") || "system",
+  themeOpen: false,
   layout: initialLayout(),
   dragging: false,
   splitOpen: false,
@@ -29,6 +31,12 @@ const state = {
   scrollReset: false,
   focusSelector: "",
 };
+
+const THEME_MODES = [
+  { id: "light", label: "Light" },
+  { id: "dark", label: "Dark" },
+  { id: "system", label: "System" },
+];
 
 const ICONS = {
   home: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2.5 7.2 8 2.8l5.5 4.4V13a1 1 0 0 1-1 1h-3.2V9.6H6.7V14H3.5a1 1 0 0 1-1-1V7.2Z"/></svg>',
@@ -47,6 +55,10 @@ const ICONS = {
   drag: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="6" cy="3.5" r="1.15"/><circle cx="10" cy="3.5" r="1.15"/><circle cx="6" cy="8" r="1.15"/><circle cx="10" cy="8" r="1.15"/><circle cx="6" cy="12.5" r="1.15"/><circle cx="10" cy="12.5" r="1.15"/></svg>',
   pin: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6.2 2.4h3.6l-.5 3.6 2.2 2.2H4.5l2.2-2.2-.5-3.6Z"/><path d="M8 8.4v5"/></svg>',
   chevron: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6.2 8 10.2 12 6.2"/></svg>',
+  sun: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="8" cy="8" r="2.3" fill="currentColor" stroke="none"/><path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.3 3.3l1.3 1.3M11.4 11.4l1.3 1.3M12.7 3.3l-1.3 1.3M4.6 11.4l-1.3 1.3"/></svg>',
+  moon: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M9.4 1.7a5.5 5.5 0 1 0 4.6 8.9A4.6 4.6 0 0 1 9.4 1.7Z"/></svg>',
+  monitor: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="2" y="2.4" width="12" height="8.2" rx="1.3"/><path d="M6 13.6h4M8 10.6v3"/></svg>',
+  check: '<svg class="check" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3.2 8.2 6.4 11.4 12.8 4.6"/></svg>',
 };
 
 function routeFromHash() {
@@ -138,10 +150,47 @@ function commitLayout() {
   });
 }
 
+function themeName(id) {
+  const found = THEME_MODES.find((t) => t.id === id);
+  return found ? found.label : "System";
+}
+
+function themeIcon(id) {
+  if (id === "light") return ICONS.sun;
+  if (id === "dark") return ICONS.moon;
+  return ICONS.monitor;
+}
+
+function applyTheme(mode) {
+  if (!["system", "light", "dark"].includes(mode)) return;
+  state.theme = mode;
+  document.documentElement.setAttribute("data-theme", mode);
+  try { localStorage.setItem("dap.theme", mode); } catch (e) { /* private mode */ }
+}
+
+function themeControl() {
+  const cur = state.theme || "system";
+  const label = themeName(cur);
+  const open = state.themeOpen;
+  const items = THEME_MODES.map((t) => {
+    const on = t.id === cur;
+    return `<button type="button" role="menuitemradio" class="theme-option" aria-checked="${on ? "true" : "false"}" data-act="theme-set" data-theme="${t.id}">
+      ${themeIcon(t.id)}<span>${t.label}</span>${on ? ICONS.check : ""}
+    </button>`;
+  }).join("");
+  return `<div class="theme">
+    <button type="button" class="theme-btn" data-act="theme-toggle" title="Theme: ${label}" aria-label="Theme: ${label}" aria-haspopup="menu" aria-expanded="${open ? "true" : "false"}" aria-controls="theme-menu">
+      ${themeIcon(cur)}
+    </button>
+    ${open ? `<div id="theme-menu" class="theme-menu" role="menu" aria-label="Theme">${items}</div>` : ""}
+  </div>`;
+}
+
 function withLayout(url) {
   try {
     const u = new URL(url, location.href);
     u.searchParams.set("density", (state.layout.home && state.layout.home.density) || "comfortable");
+    u.searchParams.set("theme", state.theme || "system");
     return u.toString();
   } catch (e) {
     return url;
@@ -292,9 +341,13 @@ function shell(inner) {
     return `<a class="${active}" href="${href}" ${active ? 'aria-current="page"' : ""}>${ICONS[icon]}<span>${label}</span>${badge}</a>`;
   };
   return `
-    <div class="app">
-      <aside class="sidebar">
+    <div class="frame">
+      <header class="topbar">
         <div class="brand"><strong>DAP</strong><span>Dashboard Agent Platform</span></div>
+        ${themeControl()}
+      </header>
+      <div class="app">
+      <aside class="sidebar">
         <nav class="nav">
           ${item("home", "Home", "home")}
           ${item("inbox", "Decision inbox", "inbox")}
@@ -310,6 +363,7 @@ function shell(inner) {
         ${state.notice ? `<div class="banner ok">${esc(state.notice)}</div>` : ""}
         ${inner}
       </main>
+      </div>
     </div>`;
 }
 
@@ -745,7 +799,7 @@ async function refresh() {
   } catch (err) {
     state.error = err.message;
   }
-  if (state.dragging) return;
+  if (state.dragging || state.themeOpen) return;
   if (state.mode && (state.mode.type === "edit" || state.mode.type === "reject")) return;
   const ae = document.activeElement;
   if (ae && ae.closest && ae.closest(".layout-switch, .drag-handle, .size-switch")) return;
@@ -767,6 +821,13 @@ async function act(name, fn) {
 }
 
 document.addEventListener("click", (ev) => {
+  if (state.themeOpen && !ev.target.closest(".theme")) {
+    state.themeOpen = false;
+    if (!ev.target.closest("[data-act]") && !ev.target.closest(".decision")) {
+      render();
+      return;
+    }
+  }
   const el = ev.target.closest("[data-act]");
   if (!el) {
     const card = ev.target.closest(".decision");
@@ -779,6 +840,26 @@ document.addEventListener("click", (ev) => {
   }
   const actName = el.dataset.act;
   const id = el.dataset.id;
+  if (actName === "theme-toggle") {
+    state.themeOpen = !state.themeOpen;
+    render();
+    if (state.themeOpen) {
+      const current = document.querySelector('.theme-option[aria-checked="true"]');
+      if (current) current.focus();
+    }
+    return;
+  }
+  if (actName === "theme-set") {
+    const mode = el.dataset.theme;
+    state.themeOpen = false;
+    applyTheme(mode);
+    render();
+    api("/api/settings", { method: "PUT", body: { theme: mode } }).catch((err) => {
+      state.error = err.message;
+      render();
+    });
+    return;
+  }
   if (actName === "layout-set" || actName === "density-set") {
     const kind = el.dataset.kind === "inbox" ? "inbox" : "home";
     if (actName === "layout-set") state.layout[kind].view = el.dataset.value;
@@ -1017,6 +1098,51 @@ document.addEventListener("keydown", (ev) => {
     }
     return;
   }
+  const inTheme = ev.target.closest && ev.target.closest(".theme");
+  if (!state.themeOpen && inTheme && (ev.key === "ArrowDown" || ev.key === "ArrowUp")) {
+    state.themeOpen = true;
+    render();
+    const current = document.querySelector('.theme-option[aria-checked="true"]');
+    if (current) current.focus();
+    ev.preventDefault();
+    return;
+  }
+  if (state.themeOpen) {
+    const items = [...document.querySelectorAll(".theme-option")];
+    const index = items.findIndex((el) => el === document.activeElement);
+    if (ev.key === "Escape") {
+      state.themeOpen = false;
+      render();
+      const btn = document.querySelector(".theme-btn");
+      if (btn) btn.focus();
+      ev.preventDefault();
+      return;
+    }
+    if (ev.key === "Tab") {
+      state.themeOpen = false;
+      const menu = document.getElementById("theme-menu");
+      if (menu) menu.remove();
+      const btn = document.querySelector(".theme-btn");
+      if (btn) btn.setAttribute("aria-expanded", "false");
+      return;
+    }
+    if (items.length && (ev.key === "ArrowDown" || ev.key === "ArrowUp" || ev.key === "Home" || ev.key === "End")) {
+      let next = index;
+      if (ev.key === "ArrowDown") next = index < 0 ? 0 : (index + 1) % items.length;
+      if (ev.key === "ArrowUp") next = index < 0 ? items.length - 1 : (index - 1 + items.length) % items.length;
+      if (ev.key === "Home") next = 0;
+      if (ev.key === "End") next = items.length - 1;
+      items[next].focus();
+      ev.preventDefault();
+    }
+    if (ev.key === "Enter" || ev.key === " ") {
+      const current = document.activeElement;
+      if (current && current.dataset && current.dataset.theme) current.click();
+      ev.preventDefault();
+    }
+    return;
+  }
+  if (inTheme) return;
   if (ev.target.closest && ev.target.closest(".layout-switch")) {
     layoutKeys(ev);
     return;
@@ -1094,11 +1220,30 @@ async function syncLayout() {
   }
 }
 
+async function syncTheme() {
+  try {
+    const saved = await api("/api/settings");
+    let local = "";
+    try { local = localStorage.getItem("dap.theme") || ""; } catch (e) { /* ignore */ }
+    if (!["system", "light", "dark"].includes(local)) local = "";
+    if (!local && saved.theme) {
+      applyTheme(saved.theme);
+      render();
+      return;
+    }
+    if (local && saved.theme && local !== saved.theme) {
+      applyTheme(local);
+      await api("/api/settings", { method: "PUT", body: { theme: local } });
+    }
+  } catch (e) { /* the page still follows localStorage */ }
+}
+
 applyLayoutAttrs();
 refresh();
 syncLayout();
+syncTheme();
 setInterval(() => {
-  if (document.hidden || state.dragging) return;
+  if (document.hidden || state.dragging || state.themeOpen) return;
   if (state.quitting || state.quitConfirm || state.quitPending) return;
   if (state.mode && (state.mode.type === "edit" || state.mode.type === "reject" || state.mode.type === "snooze")) return;
   const ae = document.activeElement;
