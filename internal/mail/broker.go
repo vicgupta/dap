@@ -124,6 +124,11 @@ func (b *Broker) SetOpener(fn func(string) error) {
 }
 
 func (b *Broker) prepare() {
+	if b.ComposioAPI == "" {
+		if v := strings.TrimSpace(os.Getenv("DAP_COMPOSIO_URL")); v != "" {
+			b.ComposioAPI = v
+		}
+	}
 	if b.connect != nil && b.ComposioAPI != "" {
 		b.connect.SetBase(b.ComposioAPI)
 	}

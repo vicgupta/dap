@@ -387,6 +387,15 @@ func (b *Broker) HasComposioKey() bool {
 	return b.connect != nil && b.connect.HasKey()
 }
 
+// SaveComposioKey probes the key and stores it only when Composio accepts it.
+func (b *Broker) SaveComposioKey(ctx context.Context, key string) (composio.KeyCheck, error) {
+	b.prepare()
+	if b.connect == nil {
+		return composio.KeyCheck{}, errors.New("composio is not configured")
+	}
+	return b.connect.SaveKey(ctx, key)
+}
+
 func ignoreMissing(err error) error {
 	if err == nil || errors.Is(err, secrets.ErrNotFound) {
 		return nil

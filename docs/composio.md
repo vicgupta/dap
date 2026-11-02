@@ -94,10 +94,22 @@ The Outlook toolkit listed about 329 tools and the Teams toolkit about 238, both
 
 A personal Outlook consent can fail if the managed app asks for an organization-only scope such as `Chat.ReadWrite`. If Microsoft shows that error, use **Direct Microsoft Graph**, which requests `User.Read`, `Mail.ReadWrite`, `offline_access`, and `Mail.Send` only when a send is approved.
 
+## Which key?
+
+DAP sends the key as `x-api-key` to `backend.composio.dev`. That call needs a **project API key**.
+
+| Prefix | What it is | What DAP does |
+| --- | --- | --- |
+| `ak_` | Project API key from the developer dashboard, **Settings → API Keys** | Saved after Composio accepts a short check, then shown as **Key verified** |
+| `ck_` | Connect / MCP consumer key (`x-consumer-api-key`) | Refused on Save key. It is not stored |
+| Anything else | Not a known DAP key | Soft warning. DAP still asks Composio; a rejection is not stored |
+
+The consumer key and the project key are different credentials. Pasting a `ck_` key used to surface Composio’s raw 401, including a masked tail of the key. Save key now stops that on the Composio card, in plain language. A later failure (rejected key, sign-in setup, or the network) stays on that card. The request id, when Composio sends one, is under **Details**. The key itself is not repeated.
+
 ## Setup
 
 1. Create a Composio account at [dashboard.composio.dev](https://dashboard.composio.dev/). The Hobby plan does not ask for a card.
-2. Open **Settings → API Keys** and create a key.
+2. Open **Settings → API Keys** and create a project API key. It starts with `ak_`. Do not paste a Connect consumer key (`ck_`).
 3. `./da run`, open **Connections**, paste the key, and press **Save key**. The field is a password field and is cleared after a successful save.
 4. Press **Connect Gmail** or **Connect Outlook**. Finish sign-in in the browser. DAP never asks for the Google or Microsoft password.
 5. Install `mail-gmail`, `mail-graph`, and `inbox-followups` if they are not installed. Approving a follow-up card is what sends.

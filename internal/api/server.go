@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vicgupta/dap/internal/composio"
 	"github.com/vicgupta/dap/internal/core"
 	"github.com/vicgupta/dap/internal/guardrails"
 	"github.com/vicgupta/dap/internal/layout"
@@ -525,11 +526,25 @@ func (s *Server) connectionSetup(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	verified := false
+	warning := ""
+	if body.APIKey != nil && strings.TrimSpace(*body.APIKey) != "" {
+		check, err := s.App.SaveComposioKey(r.Context(), *body.APIKey)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		verified = check.Verified
+		warning = check.Warning
+		body.APIKey = nil
+	}
 	if err := s.App.ConfigureConnection(r.PathValue("provider"), body.ClientID, body.Calendar, body.Mode, body.APIKey); err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok": true, "key_saved": s.App.ComposioKeySaved(), "key_verified": verified, "warning": warning,
+	})
 }
 
 func (s *Server) connectionConnect(w http.ResponseWriter, r *http.Request) {
@@ -909,5 +924,14 @@ func writeErr(w http.ResponseWriter, err error) {
 	case errors.Is(err, core.ErrBadState), errors.Is(err, core.ErrBusy):
 		code = http.StatusConflict
 	}
-	writeJSON(w, code, map[string]any{"ok": false, "error": err.Error()})
+	msg, requestID := composio.Public(err)
+	body := map[string]any{"ok": false, "error": msg}
+	if requestID != "" {
+		body["request_id"] = requestID
+	}
+	var api *composio.APIError
+	if errors.As(err, &api) && api.Status == http.StatusUnauthorized {
+		code = http.StatusUnauthorized
+	}
+	writeJSON(w, code, body)
 }
