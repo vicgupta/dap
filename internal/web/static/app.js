@@ -19,6 +19,10 @@ const state = {
   installPath: "",
   preview: null,
   connecting: "",
+  keyNote: null,
+  keyVerified: false,
+  connNote: {},
+  openDetails: {},
   data: {},
   create: { description: "", name: "", type: "", lang: "ts", ui: false, agent: "", phase: "form", log: "", report: null, path: "", edit: "" },
   quitConfirm: null,
@@ -108,10 +112,29 @@ async function api(path, opts = {}) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.ok === false) {
-    throw new Error(data.error || "Request failed");
+    const err = new Error(plainComposio(data.error || "Request failed"));
+    err.requestId = safeRequestId(data.request_id);
+    throw err;
   }
   return data;
 }
+
+function plainComposio(text) {
+  const s = String(text || "");
+  if (/(?:ck|ak)_[A-Za-z0-9*]{2,}/i.test(s) || s.indexOf('"slug"') !== -1 || s.indexOf("Invalid API key") !== -1) {
+    return "Composio could not complete that request.";
+  }
+  return s;
+}
+
+function safeRequestId(id) {
+  const s = String(id || "");
+  if (!/^[A-Za-z0-9_-]{6,80}$/.test(s) || /ck_|ak_|\*/i.test(s)) return "";
+  return s;
+}
+
+const consumerKeyMessage = "This is a Composio Connect consumer key. DAP needs a project API key that starts with ak_ from the developer dashboard’s API Keys page.";
+const otherPrefixWarning = "This key does not start with ak_. Project API keys from the developer dashboard’s API Keys page do.";
 
 function fmtTime(iso) {
   if (!iso) return "—";
@@ -838,11 +861,12 @@ function connectionsView() {
       <h2 style="margin:0">Composio</h2>
       <p class="sub">One key covers Gmail, Outlook, and any toolkit you add later. Message contents pass through Composio.</p>
       <label class="field">API key
-        <input data-composio-key type="password" autocomplete="off" spellcheck="false" placeholder="${data.key_saved ? "Saved — paste a new key to replace it" : "Paste the key from the Composio dashboard"}" />
+        <input data-composio-key type="password" autocomplete="off" spellcheck="false" placeholder="${data.key_saved ? "Saved — paste a new key to replace it" : "Project API key, starts with ak_"}" />
       </label>
-      <div class="actions" style="margin-top:12px">
+      ${inlineNote(state.keyNote, "key")}
+      <div class="actions">
         <button class="primary" data-act="save-key">Save key</button>
-        ${data.key_saved ? `<span class="pill allowed">Key saved</span>` : `<span class="pill">No key yet</span>`}
+        ${keyPill(data)}
       </div>
     </article>
     <div class="stack">${cards}</div>
@@ -885,7 +909,8 @@ function connectionCard(c, keySaved) {
   } else {
     button = `<button class="primary" data-act="connect" data-provider="${esc(c.provider)}" ${!keySaved || waiting ? "disabled" : ""}>${esc(connectLabel)}</button>`;
   }
-  const needKey = !direct && !keySaved && !c.connected ? `<p class="sub">Save the Composio API key first.</p>` : "";
+  const needKey = !direct && !keySaved && !c.connected ? `<p class="sub">Save a project API key first. It starts with ak_.</p>` : "";
+  const cardNote = inlineNote(state.connNote[c.provider], "conn-" + c.provider);
   return `<article class="card plugin-block">
     <header class="row">
       <span class="dot ${dot}"></span>
@@ -899,6 +924,7 @@ function connectionCard(c, keySaved) {
     ${detail}
     ${throttle}
     ${needKey}
+    ${cardNote}
     ${direct ? directFields(c) : ""}
     <div class="actions" style="margin-top:12px">
       ${button}
@@ -906,6 +932,22 @@ function connectionCard(c, keySaved) {
     </div>
     ${c.direct_fallback && !direct ? graphFallback(c) : ""}
   </article>`;
+}
+
+function keyPill(data) {
+  if (state.keyVerified) return `<span class="pill allowed">Key verified</span>`;
+  if (data.key_saved) return `<span class="pill allowed">Key saved</span>`;
+  return `<span class="pill">No key yet</span>`;
+}
+
+function inlineNote(note, id) {
+  if (!note || !note.text) return "";
+  const tone = note.tone === "ok" ? "ok" : note.tone === "warn" ? "warn" : "bad";
+  const open = state.openDetails[id] ? " open" : "";
+  const details = note.requestId
+    ? `<details class="note-details" data-detail="${esc(id)}"${open}><summary>Details</summary><p>Request id ${esc(note.requestId)}</p></details>`
+    : "";
+  return `<div class="note ${tone}" role="status">${esc(note.text)}${details}</div>`;
 }
 
 function directFields(c) {
@@ -1331,6 +1373,12 @@ async function act(name, fn) {
   await refresh();
 }
 
+document.addEventListener("toggle", (ev) => {
+  const d = ev.target.closest && ev.target.closest("details[data-detail]");
+  if (!d) return;
+  state.openDetails[d.dataset.detail] = d.open;
+}, true);
+
 document.addEventListener("click", (ev) => {
   if (state.themeOpen && !ev.target.closest(".theme")) {
     state.themeOpen = false;
@@ -1492,20 +1540,57 @@ document.addEventListener("click", (ev) => {
     state.preview = null;
     render();
   } else if (actName === "connect") {
-    state.connecting = el.dataset.provider;
+    const provider = el.dataset.provider;
+    state.connecting = provider;
+    state.connNote[provider] = null;
+    state.error = "";
     render();
-    act("connect", () => api("/api/connections/" + el.dataset.provider + "/connect", { method: "POST", body: {} }))
-      .finally(() => { state.connecting = ""; render(); });
+    api("/api/connections/" + provider + "/connect", { method: "POST", body: {} }).then(() => {
+      state.connecting = "";
+      return refresh();
+    }).catch((err) => {
+      state.connecting = "";
+      state.error = "";
+      state.connNote[provider] = { tone: "bad", text: err.message, requestId: err.requestId || "" };
+      render();
+    });
   } else if (actName === "disconnect") {
     act("disconnect", () => api("/api/connections/" + el.dataset.provider + "/disconnect", { method: "POST", body: {} }));
   } else if (actName === "save-key") {
     const input = document.querySelector("[data-composio-key]");
     const value = input ? input.value.trim() : "";
-    act("save-key", async () => {
-      if (!value) throw new Error("Paste the Composio API key first");
-      await api("/api/connections/composio/setup", { method: "POST", body: { api_key: value } });
-      if (input) input.value = "";
-      state.notice = "API key saved in the keychain.";
+    state.error = "";
+    state.notice = "";
+    if (!value) {
+      state.keyNote = { tone: "bad", text: "Paste the Composio API key first." };
+      state.keyVerified = false;
+      render();
+      return;
+    }
+    if (/^ck_/i.test(value)) {
+      state.keyNote = { tone: "bad", text: consumerKeyMessage };
+      input.value = "";
+      render();
+      return;
+    }
+    const soft = !/^ak_/i.test(value);
+    api("/api/connections/composio/setup", { method: "POST", body: { api_key: value } }).then((data) => {
+      input.value = "";
+      state.keyVerified = !!data.key_verified;
+      if (data.key_verified && (soft || data.warning)) {
+        state.keyNote = { tone: "warn", text: "Key verified. " + otherPrefixWarning };
+      } else if (data.key_verified) {
+        state.keyNote = { tone: "ok", text: "Key verified." };
+      } else {
+        state.keyNote = { tone: "bad", text: "Composio rejected this key." };
+        state.keyVerified = false;
+      }
+      return refresh();
+    }).catch((err) => {
+      input.value = "";
+      state.keyVerified = false;
+      state.keyNote = { tone: "bad", text: err.message, requestId: err.requestId || "" };
+      render();
     });
   } else if (actName === "set-mode") {
     act("mode", () => api("/api/connections/" + el.dataset.provider + "/setup", {

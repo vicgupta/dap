@@ -9,19 +9,29 @@ import (
 	"testing"
 )
 
-func TestClientRedactsKey(t *testing.T) {
+func TestClientHidesInvalidKey(t *testing.T) {
 	const key = "ak_test_secret_value"
+	const body = `{"error":{"message":"Invalid API key: ck_**oG8d","code":801,"slug":"APIKey_InvalidAPIKey","status":401,"request_id":"req_abc123"}}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("x-api-key") != key {
 			t.Errorf("missing key header")
 		}
-		http.Error(w, "bad "+key, http.StatusUnauthorized)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, body)
 	}))
 	defer srv.Close()
 	c := &Client{Base: srv.URL, Key: key}
-	_, err := c.EnsureAuthConfig(context.Background(), "gmail")
-	if err == nil || strings.Contains(err.Error(), key) || !strings.Contains(err.Error(), "[redacted]") {
-		t.Fatal(err)
+	err := c.Probe(context.Background())
+	if err == nil {
+		t.Fatal("expected rejection")
+	}
+	msg, rid := Public(err)
+	if strings.Contains(msg, key) || strings.Contains(msg, "ck_") || strings.Contains(msg, "oG8d") || strings.Contains(msg, "**") || strings.Contains(msg, "Invalid API key") {
+		t.Fatalf("leaked key material: %s", msg)
+	}
+	if !strings.Contains(msg, "rejected this key") || rid != "req_abc123" {
+		t.Fatalf("msg=%s rid=%s", msg, rid)
 	}
 }
 

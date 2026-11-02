@@ -370,6 +370,19 @@ textarea { min-height: 88px; resize: vertical; }
   font-weight: 500;
 }
 .banner.ok { background: var(--good-bg); color: var(--good); }
+.note {
+  margin-top: var(--stack-gap, 12px);
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-weight: 500;
+}
+.note.ok { background: var(--good-bg); color: var(--good); }
+.note.warn { background: var(--warn-bg); color: var(--warn); }
+.note summary { cursor: pointer; color: var(--ink); font-weight: 600; }
+.note details p { margin: 6px 0 0; color: var(--muted); font-weight: 400; font-size: 12px; }
+html[data-density="compact"] .note { padding: 8px 10px; border-radius: 8px; }
 .empty {
   padding: 36px 18px;
   text-align: center;

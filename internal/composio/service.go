@@ -57,17 +57,74 @@ func (s *Service) HasKey() bool {
 	return err == nil && strings.TrimSpace(v) != ""
 }
 
+// ConsumerKeyMessage is shown when someone pastes a Connect consumer key.
+const ConsumerKeyMessage = "This is a Composio Connect consumer key. DAP needs a project API key that starts with ak_ from the developer dashboard’s API Keys page."
+
+// OtherPrefixWarning is a soft note for a key that is not ak_ and not ck_.
+const OtherPrefixWarning = "This key does not start with ak_. Project API keys from the developer dashboard’s API Keys page do."
+
+// KeyCheck is the result of saving a key. The key itself is never included.
+type KeyCheck struct {
+	Verified bool
+	Warning  string
+}
+
 // SetKey stores the Composio API key in the secret keeper.
-// An empty key deletes it. The value is never written to config or the ledger.
+// An empty key deletes it. A ck_ consumer key is refused and not stored.
+// The value is never written to config or the ledger.
 func (s *Service) SetKey(key string) error {
 	key = strings.TrimSpace(key)
 	if key == "" {
 		return s.secrets.Delete(secretService, accountKey)
 	}
-	if strings.ContainsAny(key, "\r\n") || len(key) > 512 {
-		return errors.New("that does not look like a composio api key")
+	if err := screenKey(key); err != nil {
+		return err
 	}
 	return s.secrets.Set(secretService, accountKey, key)
+}
+
+// SaveKey checks the key with Composio and stores it only when that call succeeds.
+func (s *Service) SaveKey(ctx context.Context, key string) (KeyCheck, error) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return KeyCheck{}, s.secrets.Delete(secretService, accountKey)
+	}
+	if err := screenKey(key); err != nil {
+		return KeyCheck{}, err
+	}
+	if err := (&Client{Base: s.base, Key: key}).Probe(ctx); err != nil {
+		return KeyCheck{}, err
+	}
+	if err := s.secrets.Set(secretService, accountKey, key); err != nil {
+		return KeyCheck{}, err
+	}
+	out := KeyCheck{Verified: true}
+	if keyPrefix(key) != "ak" {
+		out.Warning = OtherPrefixWarning
+	}
+	return out, nil
+}
+
+func screenKey(key string) error {
+	if strings.ContainsAny(key, "\r\n") || len(key) > 512 || strings.Contains(key, " ") {
+		return errors.New("That does not look like a Composio project API key.")
+	}
+	if keyPrefix(key) == "ck" {
+		return errors.New(ConsumerKeyMessage)
+	}
+	return nil
+}
+
+func keyPrefix(key string) string {
+	low := strings.ToLower(key)
+	switch {
+	case strings.HasPrefix(low, "ck_"):
+		return "ck"
+	case strings.HasPrefix(low, "ak_"):
+		return "ak"
+	default:
+		return "other"
+	}
 }
 
 func (s *Service) key() (string, error) {

@@ -7,6 +7,7 @@ import (
 
 	"fmt"
 
+	"github.com/vicgupta/dap/internal/composio"
 	"github.com/vicgupta/dap/internal/guardrails"
 	"github.com/vicgupta/dap/internal/ledger"
 	"github.com/vicgupta/dap/internal/mail"
@@ -96,6 +97,11 @@ func (a *App) ConfigureConnection(provider string, clientID *string, calendar *b
 
 // ComposioKeySaved reports the key without returning it.
 func (a *App) ComposioKeySaved() bool { return a.mail.HasComposioKey() }
+
+// SaveComposioKey stores a project API key only after Composio accepts it.
+func (a *App) SaveComposioKey(ctx context.Context, key string) (composio.KeyCheck, error) {
+	return a.mail.SaveComposioKey(ctx, key)
+}
 
 // MailConnect starts provider sign-in. The demo mailbox connects without a browser.
 func (a *App) MailConnect(ctx context.Context, provider string) error {
