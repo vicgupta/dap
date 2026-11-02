@@ -142,7 +142,7 @@ da plugin install /Applications/DAP.app/Contents/Resources/plugins/workflow --ap
 da run
 ```
 
-Use the plugins directory the installer printed (`~/.local/share/dap/plugins`, `/usr/share/dap/plugins`, or `%LOCALAPPDATA%\DAP\plugins`). Gmail and Outlook need an OAuth client id on the Connections page. The steps are in [inbox-followups.md](inbox-followups.md). The demo mailbox (`mail-fake`) does not. Nothing sends until you approve a card.
+Use the plugins directory the installer printed (`~/.local/share/dap/plugins`, `/usr/share/dap/plugins`, or `%LOCALAPPDATA%\DAP\plugins`). Gmail and Outlook connect through Composio: save the API key on Connections, then press Connect. The steps are in [composio.md](composio.md). The demo mailbox (`mail-fake`) does not need a key. Nothing sends until you approve a card. Direct Microsoft Graph, and legacy direct Gmail, are documented in [inbox-followups.md](inbox-followups.md).
 
 ## Version string
 
