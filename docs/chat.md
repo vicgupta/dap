@@ -2,7 +2,7 @@
 
 Chat is a panel in the local DAP window. It talks to the coding CLI you already installed: Claude Code or Codex. DAP does not host a model, does not read CLI credentials, and does not send anything on its own.
 
-Open it from **Chat** in the sidebar, or press **Ctrl+Shift+C** (Command+Shift+C on a Mac) from any screen. Enter sends. Shift+Enter adds a line. Escape stops the turn that is running.
+Open it from **Chat** in the sidebar, or press **Ctrl+Shift+.** (Command+Shift+. on a Mac) from any screen. That combo is free in Firefox, Edge, Chrome, Brave, and Safari. Ctrl+Shift+C and Command+Shift+C are the inspector in Firefox and Edge, so DAP does not use them. Enter sends. Shift+Enter adds a line. Escape stops the turn that is running.
 
 ## What a turn does
 

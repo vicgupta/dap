@@ -1058,7 +1058,7 @@ function chatView() {
       <header class="chat-head">
         <div>
           <h1>Chat</h1>
-          <p>Read-only until you approve a card. <span class="keys">Ctrl+Shift+C</span></p>
+          <p>Read-only until you approve a card. <span class="keys">${esc(chatShortcutLabel())}</span></p>
         </div>
         <div class="chat-head-actions">
           <div class="chat-picker" role="radiogroup" aria-label="Coding agent">${picker}</div>
@@ -1183,6 +1183,59 @@ function paintChatThread() {
   thread.scrollTop = thread.scrollHeight;
 }
 
+function isMac() {
+  const platform = navigator.platform || "";
+  if (platform) return /Mac|iPhone|iPad|iPod/.test(platform);
+  return /Mac OS X|iPhone|iPad/.test(navigator.userAgent || "");
+}
+
+function chatShortcutLabel() {
+  return isMac() ? "⌘⇧." : "Ctrl+Shift+.";
+}
+
+// Ctrl/Cmd+Shift+C is the inspector in Firefox and Edge (and Chrome on Windows).
+// Cmd+Option+C is Web Inspector in Safari. Ctrl+Shift+. / Cmd+Shift+. is free
+// in those browsers. ev.code stays "Period" when Shift makes ev.key ">".
+function isOpenChatShortcut(ev) {
+  if (!ev || ev.repeat || ev.isComposing || ev.altKey) return false;
+  if (ev.code !== "Period") return false;
+  if (!ev.shiftKey) return false;
+  if (ev.metaKey) return true;
+  return ev.ctrlKey && !ev.metaKey;
+}
+
+// readChatStream accepts fetch streaming (Chrome, Edge, Firefox, Safari) and
+// falls back to a buffered body when getReader is missing.
+async function readChatStream(res, onLine) {
+  const body = res.body;
+  if (body && typeof body.getReader === "function") {
+    const reader = body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const step = await reader.read();
+      if (step.done) {
+        buf += dec.decode();
+        break;
+      }
+      buf += dec.decode(step.value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, idx).trim();
+        buf = buf.slice(idx + 1);
+        if (line) onLine(line);
+      }
+    }
+    if (buf.trim()) onLine(buf.trim());
+    return;
+  }
+  const text = await res.text();
+  text.split("\n").forEach((line) => {
+    const trimmed = line.trim();
+    if (trimmed) onLine(trimmed);
+  });
+}
+
 function applyChatEvent(ev) {
   const sess = state.chat.session;
   if (!sess) return;
@@ -1259,23 +1312,10 @@ async function sendChat() {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || "Request failed");
     }
-    const reader = res.body && res.body.getReader ? res.body.getReader() : null;
-    if (!reader) throw new Error("This browser cannot stream the reply");
-    const dec = new TextDecoder();
-    let buf = "";
-    while (true) {
-      const step = await reader.read();
-      if (step.done) break;
-      buf += dec.decode(step.value, { stream: true });
-      let idx;
-      while ((idx = buf.indexOf("\n")) >= 0) {
-        const line = buf.slice(0, idx).trim();
-        buf = buf.slice(idx + 1);
-        if (!line) continue;
-        try { applyChatEvent(JSON.parse(line)); } catch (e) { continue; }
-        paintChatThread();
-      }
-    }
+    await readChatStream(res, (line) => {
+      try { applyChatEvent(JSON.parse(line)); } catch (e) { return; }
+      paintChatThread();
+    });
   } catch (err) {
     state.error = err.message;
     const msgs = state.chat.session && state.chat.session.messages;
@@ -1798,10 +1838,12 @@ function applyReorder(kind, fromId, toId) {
 
 document.addEventListener("dragstart", (ev) => {
   const handle = ev.target.closest && ev.target.closest(".drag-handle");
-  if (!handle) return;
+  if (!handle || !ev.dataTransfer) return;
   state.dragging = true;
-  ev.dataTransfer.setData("text/plain", JSON.stringify({ kind: handle.dataset.kind, id: handle.dataset.id }));
+  // Firefox drops the drag unless effectAllowed is set before setData,
+  // and it only accepts a standard type such as text/plain.
   ev.dataTransfer.effectAllowed = "move";
+  ev.dataTransfer.setData("text/plain", JSON.stringify({ kind: handle.dataset.kind, id: handle.dataset.id }));
   const card = handle.closest("[data-card-id]");
   if (card) card.classList.add("is-dragging");
 });
@@ -1816,6 +1858,7 @@ document.addEventListener("dragover", (ev) => {
   const card = ev.target.closest && ev.target.closest("[data-card-id]");
   if (!card) return;
   ev.preventDefault();
+  if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
   document.querySelectorAll(".drag-over").forEach((el) => el.classList.remove("drag-over"));
   card.classList.add("drag-over");
 });
@@ -1837,7 +1880,7 @@ document.addEventListener("input", (ev) => {
 });
 
 document.addEventListener("keydown", (ev) => {
-  if ((ev.ctrlKey || ev.metaKey) && ev.shiftKey && (ev.key === "c" || ev.key === "C")) {
+  if (isOpenChatShortcut(ev)) {
     if (state.quitting) return;
     ev.preventDefault();
     if (state.route !== "chat") {

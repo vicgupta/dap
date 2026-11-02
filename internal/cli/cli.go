@@ -113,8 +113,8 @@ func Run(args []string, opt Options) int {
 const usage = `da — Dashboard Agent Platform
 
   da init
-  da serve [--addr host:port]
-  da run [--addr host:port]
+  da serve [--addr host:port] [--no-browser]
+  da run [--addr host:port] [--no-browser]
   da quit                 stop a running DAP (da stop is the same)
   da doctor
   da plugin install [--approve] <path>
@@ -197,17 +197,7 @@ func cmdInit(dir string) (any, error) {
 }
 
 func cmdServe(dir string, args []string, opt Options, open bool) error {
-	addr := ""
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--addr" && i+1 < len(args) {
-			i++
-			addr = args[i]
-		} else if strings.HasPrefix(args[i], "--addr=") {
-			addr = strings.TrimPrefix(args[i], "--addr=")
-		} else if args[i] == "--open" {
-			open = true
-		}
-	}
+	addr, open := serveFlags(args, open)
 	if _, err := core.InitDataDir(dir); err != nil {
 		return err
 	}
@@ -243,14 +233,36 @@ func cmdServe(dir string, args []string, opt Options, open bool) error {
 	if err := runinfo.Write(app.DataDir, info); err != nil {
 		return err
 	}
+	// The URL is printed before the browser opens, and also when --no-browser
+	// is set, so it can be pasted into Chrome, Edge, Firefox, Brave, or Safari.
 	write(opt.Stdout, map[string]any{"ok": true, "addr": srv.Addr, "url": srv.URL(), "data_dir": app.DataDir})
 	if open {
 		if err := desktop.OpenApp(srv.URL(), app.DataDir); err != nil {
-			fmt.Fprintf(opt.Stderr, "{\"ok\":false,\"error\":%q}\n", "open window: "+err.Error())
+			fmt.Fprintf(opt.Stderr, "{\"ok\":false,\"error\":%q,\"url\":%q}\n", "open browser: "+err.Error(), srv.URL())
 		}
 	}
 	waitForStop(stop)
 	return nil
+}
+
+// serveFlags reads --addr, --open, and --no-browser. Other arguments are ignored.
+// --no-browser wins over the command default. A later --open turns it back on.
+func serveFlags(args []string, openByDefault bool) (addr string, open bool) {
+	open = openByDefault
+	for i := 0; i < len(args); i++ {
+		switch {
+		case args[i] == "--addr" && i+1 < len(args):
+			i++
+			addr = args[i]
+		case strings.HasPrefix(args[i], "--addr="):
+			addr = strings.TrimPrefix(args[i], "--addr=")
+		case args[i] == "--open":
+			open = true
+		case args[i] == "--no-browser":
+			open = false
+		}
+	}
+	return addr, open
 }
 
 func cmdQuit(dir string) (any, error) {

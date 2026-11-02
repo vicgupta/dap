@@ -659,6 +659,10 @@ func oauthExtra(provider string, incremental bool) url.Values {
 }
 
 func redirectHost(provider string) string {
+	// Microsoft’s public-client redirect is http://localhost. The callback
+	// also listens on 127.0.0.1 and ::1 for that same port, so Safari and
+	// Firefox still land on it when localhost is IPv6. Gmail uses 127.0.0.1,
+	// which Firefox HTTPS-Only and Brave leave alone.
 	if provider == "graph" {
 		return "localhost"
 	}

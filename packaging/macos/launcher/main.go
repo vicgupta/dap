@@ -1,5 +1,5 @@
 // DAP.app double-click entry. Finder launches this with no user args.
-// It starts the real CLI as `da run` so the chromeless window opens.
+// It starts the real CLI as `da run` so the default browser opens.
 // Data stays at $DAP_HOME or ~/.dap; this wrapper does not pass --data.
 package main
 

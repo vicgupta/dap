@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -58,11 +59,17 @@ func Authorize(ctx context.Context, cfg Config) (Token, error) {
 	if err != nil {
 		return Token{}, err
 	}
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	// Bind 127.0.0.1 and, when it is free, ::1 on the same port. A redirect
+	// of http://localhost often resolves to ::1 in Safari and Firefox, while
+	// http://127.0.0.1 stays on IPv4. Both are loopback, so either browser
+	// reaches this process. The callback is a top-level navigation with the
+	// code in the query string: no cookie, so Brave Shields and Safari ITP
+	// have nothing third-party to block. Firefox HTTPS-Only exempts
+	// http://127.0.0.1 and http://localhost.
+	ln4, ln6, port, err := listenLoopback()
 	if err != nil {
 		return Token{}, err
 	}
-	port := ln.Addr().(*net.TCPAddr).Port
 	redirect := fmt.Sprintf("http://%s:%d/callback", host, port)
 
 	q := url.Values{}
@@ -90,41 +97,42 @@ func Authorize(ctx context.Context, cfg Config) (Token, error) {
 		err  error
 	}
 	done := make(chan result, 1)
-	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/callback" {
 			http.NotFound(w, r)
 			return
 		}
 		if errText := r.URL.Query().Get("error"); errText != "" {
-			http.Error(w, "Sign-in was cancelled.", http.StatusBadRequest)
+			writeCallback(w, http.StatusBadRequest, "Sign-in was cancelled.")
 			done <- result{err: fmt.Errorf("provider returned %s", errText)}
 			return
 		}
 		if r.URL.Query().Get("state") != state {
-			http.Error(w, "Sign-in could not be verified.", http.StatusBadRequest)
+			writeCallback(w, http.StatusBadRequest, "Sign-in could not be verified.")
 			done <- result{err: fmt.Errorf("oauth state did not match")}
 			return
 		}
 		code := r.URL.Query().Get("code")
 		if code == "" {
-			http.Error(w, "Sign-in did not return a code.", http.StatusBadRequest)
+			writeCallback(w, http.StatusBadRequest, "Sign-in did not return a code.")
 			done <- result{err: fmt.Errorf("oauth code missing")}
 			return
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte("<!doctype html><meta charset=utf-8><title>DAP</title><p>Signed in. You can close this window and return to DAP.</p>"))
+		writeCallback(w, http.StatusOK, "Signed in. You can close this window and return to DAP.")
 		done <- result{code: code}
-	})}
-	go func() { _ = srv.Serve(ln) }()
+	})
+	servers := startLoopback(handler, ln4, ln6)
 	defer func() {
 		shut, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		_ = srv.Shutdown(shut)
+		for _, srv := range servers {
+			_ = srv.Shutdown(shut)
+		}
 	}()
 
 	if cfg.Open != nil {
 		if err := cfg.Open(authURL); err != nil {
-			return Token{}, err
+			return Token{}, fmt.Errorf("open this sign-in URL in any browser: %s (%w)", authURL, err)
 		}
 	}
 	var code string
@@ -207,6 +215,52 @@ func exchange(ctx context.Context, cfg Config, form url.Values) (Token, error) {
 		Expiry:       exp,
 		Scopes:       scopes,
 	}, nil
+}
+
+// listenLoopback returns an IPv4 loopback listener and, when the port is
+// free, an IPv6 loopback listener on the same port. The IPv6 listener may
+// be nil. The caller closes both by shutting the servers down.
+func listenLoopback() (v4, v6 net.Listener, port int, err error) {
+	v4, err = net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	port = v4.Addr().(*net.TCPAddr).Port
+	v6, err = net.Listen("tcp6", net.JoinHostPort("::1", strconv.Itoa(port)))
+	if err != nil {
+		return v4, nil, port, nil
+	}
+	return v4, v6, port, nil
+}
+
+func startLoopback(handler http.Handler, lns ...net.Listener) []*http.Server {
+	var servers []*http.Server
+	for _, ln := range lns {
+		if ln == nil {
+			continue
+		}
+		srv := &http.Server{Handler: handler}
+		servers = append(servers, srv)
+		go func(s *http.Server, l net.Listener) { _ = s.Serve(l) }(srv, ln)
+	}
+	return servers
+}
+
+func writeCallback(w http.ResponseWriter, code int, message string) {
+	// Same-origin loopback page. No Set-Cookie: the authorization code is
+	// already in the query string of this top-level navigation.
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'")
+	w.WriteHeader(code)
+	_, _ = io.WriteString(w, "<!doctype html><html lang=en><meta charset=utf-8><title>DAP</title><p>"+htmlEscape(message)+"</p></html>")
+}
+
+func htmlEscape(s string) string {
+	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&#34;")
+	return r.Replace(s)
 }
 
 func pkce() (verifier, challenge string, err error) {

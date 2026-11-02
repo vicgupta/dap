@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -173,7 +174,7 @@ func (s *Service) Connect(ctx context.Context, id string) (Connection, error) {
 	}
 	if s.open != nil {
 		if err := s.open(link.RedirectURL); err != nil {
-			return Connection{}, err
+			return Connection{}, fmt.Errorf("open this sign-in URL in any browser: %s (%w)", link.RedirectURL, err)
 		}
 	}
 	acc, err := client.WaitActive(ctx, link.AccountID)

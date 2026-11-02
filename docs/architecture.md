@@ -4,17 +4,19 @@ DAP core `0.1.0` is one Go binary, `da`, built from `cmd/da`. The module require
 
 ## Window
 
-The UI is HTML, CSS, and JavaScript embedded with `go:embed` (`internal/web`). `da serve` listens on loopback and prints a URL. `da run` does that and opens a window.
+The UI is HTML, CSS, and JavaScript embedded with `go:embed` (`internal/web`). `da serve` and `da run` listen on loopback and print a URL. `da run` also opens that URL in the default browser. `--no-browser` on either command skips the launch and still prints the URL.
 
-`internal/desktop` searches for a browser and starts the first one it finds:
+`internal/desktop` does not search for a particular browser:
 
-- macOS: `/Applications/Google Chrome.app` with `--app=<url> --new-window`, then Microsoft Edge the same way, then `open <url>`.
-- Windows: `msedge --app=<url>`, then `chrome --app=<url>`, then `cmd /c start "" <url>`.
-- Linux: `google-chrome`, `google-chrome-stable`, `chromium`, and `chromium-browser`, each with `--app=<url> --new-window`, then `xdg-open`.
+- macOS: `open <url>`
+- Windows: `rundll32 url.dll,FileProtocolHandler <url>` (no shell, so `&` in the URL is preserved, and no elevation)
+- Linux and other Unix: `xdg-open <url>`
 
-`--app` is a chromeless window. The fallback is a normal browser tab. If none of those exist, `da run` still serves and writes an error to stderr. The server keeps running until **Quit** in the sidebar, `da quit`, or Ctrl+C (`SIGINT`, and `SIGTERM` on Unix). Those three use the same shutdown: stop the scheduler, wait up to 10 seconds for in-flight `act` calls, call `shutdown` on each plugin, flush the ledger and state, remove `run.json`, release `dap.lock`, stop HTTP, and exit 0.
+The URL is one argument. There is no `--app` flag, no `--user-data-dir`, and no Chrome DevTools port. Chrome, Edge, Firefox, Brave, and Safari all work, including a machine with no Chrome installed. If the opener is missing, `da run` still serves and writes the error, plus the URL, to stderr. The server keeps running until **Quit** in the sidebar, `da quit`, or Ctrl+C (`SIGINT`, and `SIGTERM` on Unix). Those three use the same shutdown: stop the scheduler, wait up to 10 seconds for in-flight `act` calls, call `shutdown` on each plugin, flush the ledger and state, remove `run.json`, release `dap.lock`, stop HTTP, and exit 0.
 
-`da run` gives Chrome, Edge, or Chromium a private `--user-data-dir` under the data directory (`browser-profile/`). That process is the only browser DAP will stop on quit. `open` and `xdg-open` are normal tabs; the page asks the window to close itself, and those fallbacks are left alone.
+DAP does not own the browser process, so quit does not close other windows. The page says DAP has quit and asks the tab to close itself. A `browser-profile/` directory left by an older build is unused.
+
+Mail sign-in uses that same opener: Composio’s hosted page, direct Gmail, and direct Microsoft Graph. The loopback callback listens on `127.0.0.1` and `[::1]` for one port. Graph’s redirect host stays `localhost` (the Microsoft public-client form); Gmail uses `127.0.0.1`. The code comes back in the query string. The callback does not set a cookie, so Brave Shields and Safari ITP are not in the path. Firefox HTTPS-Only mode exempts `http://127.0.0.1` and `http://localhost`.
 
 Wails was not used. A Wails (or webview) build needs CGO and a platform SDK: WebKitGTK on Linux, WebView2 on Windows, WKWebView on macOS. `go build` would fail without that SDK, and cross-compilation gets harder. Plugin traffic already goes through HTTP, so a native shell can wrap this binary later without a plugin change.
 
