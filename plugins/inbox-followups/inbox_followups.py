@@ -330,6 +330,8 @@ def handle(method, params):
             {"key": "sent", "label": "Follow-ups sent", "value": len(done)},
             {"key": "waiting", "label": "Still waiting", "value": sum(1 for c in (inbox.get("cards") or []) if c.get("status") == "pending")},
         ]}
+    if method == "shutdown":
+        return {"ok": True}
     raise RuntimeError("unknown method %s" % method)
 
 

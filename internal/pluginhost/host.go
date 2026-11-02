@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -244,6 +245,18 @@ func (h *Host) Stop(name string) {
 	if p != nil {
 		p.stop()
 	}
+}
+
+// Names lists plugins the host has started and not yet stopped.
+func (h *Host) Names() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	names := make([]string, 0, len(h.plugins))
+	for name := range h.plugins {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // StopAll terminates every plugin.

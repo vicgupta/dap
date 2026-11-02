@@ -38,19 +38,25 @@ type App struct {
 	host    *pluginhost.Host
 	lock    *lockfile.Lock
 
-	mu         sync.Mutex
-	configMu   sync.Mutex
-	runMu      map[string]*sync.Mutex
-	rt         map[string]*runtime
-	checks     []CheckRecord
-	orderErr   string
-	pluginsUp  bool
-	clock      func() time.Time
-	schedStop  chan struct{}
-	apiLn      net.Listener
-	apiSrv     *http.Server
-	apiBase    string
-	adminToken string
+	mu           sync.Mutex
+	configMu     sync.Mutex
+	runMu        map[string]*sync.Mutex
+	rt           map[string]*runtime
+	checks       []CheckRecord
+	orderErr     string
+	pluginsUp    bool
+	clock        func() time.Time
+	schedStop    chan struct{}
+	apiLn        net.Listener
+	apiSrv       *http.Server
+	apiBase      string
+	adminToken   string
+	stopping     bool
+	inflightOps  int
+	inflightActs int
+	busy         map[string]int
+	shutOnce     sync.Once
+	shutErr      error
 }
 
 type runtime struct {
@@ -128,21 +134,15 @@ func Open(dir string) (*App, error) {
 		lock:       lk,
 		runMu:      map[string]*sync.Mutex{},
 		rt:         map[string]*runtime{},
+		busy:       map[string]int{},
 		adminToken: randomToken(),
 	}, nil
 }
 
-// Close stops the scheduler, plugins, and plugin API, then releases the lock.
+// Close shuts DAP down and releases the data directory.
+// Quit, Ctrl+C, and a normal process exit all use Shutdown.
 func (a *App) Close() error {
-	a.StopScheduler()
-	if a.apiSrv != nil {
-		_ = a.apiSrv.Close()
-	}
-	a.host.StopAll()
-	if a.lock != nil {
-		return a.lock.Release()
-	}
-	return nil
+	return a.Shutdown()
 }
 
 // Start brings up the scoped plugin API, the plugins, and the scheduler.

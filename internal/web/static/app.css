@@ -152,14 +152,73 @@ a { color: var(--accent-ink); }
   align-items: center;
   justify-content: center;
 }
-.side-foot {
+.sidebar-end {
   margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.side-foot {
+  margin-top: 0;
   padding: 12px 10px 0;
   color: var(--faint);
   font-size: 12px;
   line-height: 1.45;
 }
 .side-foot strong { display: block; color: var(--ink); font-weight: 500; }
+.quit-wrap { position: relative; }
+.quit-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 500;
+}
+.quit-btn svg { flex: none; color: var(--faint); }
+.quit-btn:hover {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.quit-btn:hover svg { color: var(--danger); }
+.quit-dialog {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  width: 260px;
+  z-index: 5;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 12px;
+}
+.quit-dialog h2 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.quit-dialog p { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
+.quit-dialog .quit-note { color: var(--warn); }
+.quit-dialog .inline { margin-top: 4px; }
+.quit-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 32px 16px;
+  background: var(--bg);
+  color: var(--ink);
+}
+.quit-page h1 { margin: 0 0 8px; font-size: 22px; font-weight: 600; letter-spacing: -0.03em; }
+.quit-page p { margin: 0; color: var(--muted); }
 
 .main { padding: 28px 36px 72px; max-width: 1120px; }
 .page-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-end; margin-bottom: 22px; }
@@ -490,7 +549,8 @@ html[data-density="compact"] .split-item .actions button {
   .sidebar { position: relative; top: 0; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
   .topbar .brand span { display: none; }
   .nav { flex-direction: row; flex-wrap: wrap; }
-  .side-foot { margin-top: 12px; }
+  .sidebar-end { margin-top: 12px; }
+  .quit-dialog { width: min(260px, calc(100vw - 32px)); }
   .grid, .policy, .activity li { grid-template-columns: 1fr; }
   .main { padding: 20px 16px 48px; }
   .page-head { flex-direction: column; align-items: stretch; }

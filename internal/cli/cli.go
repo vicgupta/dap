@@ -12,6 +12,8 @@ import (
 	"os/user"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/vicgupta/dap/internal/api"
 	"github.com/vicgupta/dap/internal/core"
@@ -56,6 +58,8 @@ func Run(args []string, opt Options) int {
 		err = cmdServe(data, rest[1:], opt, false)
 	case "run":
 		err = cmdServe(data, rest[1:], opt, true)
+	case "quit", "stop":
+		result, err = cmdQuit(data)
 	case "doctor":
 		result, err = cmdDoctor(data)
 		if err == nil && !truthyOK(result) {
@@ -106,6 +110,7 @@ const usage = `da — Dashboard Agent Platform
   da init
   da serve [--addr host:port]
   da run [--addr host:port]
+  da quit                 stop a running DAP (da stop is the same)
   da doctor
   da plugin install [--approve] <path>
   da plugin list
@@ -205,28 +210,67 @@ func cmdServe(dir string, args []string, opt Options, open bool) error {
 	if err != nil {
 		return err
 	}
-	defer app.Close()
+	var srv *api.Server
+	defer func() {
+		// SIGINT, SIGTERM, and POST /api/quit all land here.
+		if err := app.Shutdown(); err != nil {
+			fmt.Fprintf(opt.Stderr, "{\"ok\":false,\"error\":%q}\n", "shutdown: "+err.Error())
+		}
+		desktop.Close()
+		if srv != nil {
+			_ = srv.Close()
+		}
+	}()
 	if err := app.Start(); err != nil {
 		return err
 	}
-	srv := api.New(app, addr)
+	srv = api.New(app, addr)
+	stop := make(chan struct{})
+	var once sync.Once
+	srv.OnQuit(func() { once.Do(func() { close(stop) }) })
 	if err := srv.Start(); err != nil {
 		return err
 	}
-	defer srv.Close()
 	info := runinfo.Info{PID: os.Getpid(), Addr: srv.Addr, Token: app.AdminToken()}
 	if err := runinfo.Write(app.DataDir, info); err != nil {
 		return err
 	}
-	defer runinfo.Remove(app.DataDir)
 	write(opt.Stdout, map[string]any{"ok": true, "addr": srv.Addr, "url": srv.URL(), "data_dir": app.DataDir})
 	if open {
-		if err := desktop.Open(srv.URL()); err != nil {
+		if err := desktop.OpenApp(srv.URL(), app.DataDir); err != nil {
 			fmt.Fprintf(opt.Stderr, "{\"ok\":false,\"error\":%q}\n", "open window: "+err.Error())
 		}
 	}
-	waitForStop()
+	waitForStop(stop)
 	return nil
+}
+
+func cmdQuit(dir string) (any, error) {
+	info, ok := liveServer(dir)
+	if !ok {
+		return nil, errors.New("DAP is not running")
+	}
+	req, err := http.NewRequest(http.MethodPost, "http://"+info.Addr+"/api/quit", bytes.NewReader([]byte("{}")))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+info.Token)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-DAP-Request", "quit")
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out any
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 400 {
+		return nil, errorFrom(out, resp.StatusCode)
+	}
+	return out, nil
 }
 
 type session struct {

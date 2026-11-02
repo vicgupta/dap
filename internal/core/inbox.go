@@ -30,6 +30,11 @@ func (a *App) Approve(id string) (model.Card, error) {
 	if err != nil {
 		return model.Card{}, err
 	}
+	end, err := a.beginCall(plugin, true)
+	if err != nil {
+		return model.Card{}, err
+	}
+	defer end()
 	a.mutex(plugin).Lock()
 	defer a.mutex(plugin).Unlock()
 	return a.finishApproved(id)
