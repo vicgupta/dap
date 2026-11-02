@@ -3,6 +3,8 @@ package api
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -39,6 +41,67 @@ func TestAdminRequiresTokenAndServesUI(t *testing.T) {
 	}
 	if !strings.Contains(rr.Header().Get("Content-Security-Policy"), "script-src 'self'") {
 		t.Fatal(rr.Header().Get("Content-Security-Policy"))
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, `data-density="comfortable"`) || !strings.Contains(body, `name="dap-layout"`) {
+		t.Fatalf("index missing layout boot: %s", body)
+	}
+	if !strings.Contains(body, `/layout-boot.js`) {
+		t.Fatal("layout boot script missing")
+	}
+}
+
+func TestLayoutSettingsRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte("{\n  \"addr\": \"127.0.0.1:7391\",\n  \"theme\": \"dark\"\n}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	app, err := core.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = app.Close() })
+	s := New(app, "127.0.0.1:0")
+	h := s.Handler()
+
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", strings.NewReader(`{"layout":{"home":{"view":"board","density":"compact"},"inbox":{"view":"split"}}}`))
+	req.Header.Set("Authorization", "Bearer "+app.AdminToken())
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("put %d %s", rr.Code, rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	req.Header.Set("Authorization", "Bearer "+app.AdminToken())
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"view":"board"`) || !strings.Contains(rr.Body.String(), `"view":"split"`) {
+		t.Fatalf("get %d %s", rr.Code, rr.Body.String())
+	}
+
+	saved, err := os.ReadFile(filepath.Join(dir, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(saved), `"theme": "dark"`) {
+		t.Fatalf("theme key was dropped: %s", saved)
+	}
+
+	req = httptest.NewRequest(http.MethodPut, "/api/settings", strings.NewReader(`{"layout":{"home":{"view":"split"}}}`))
+	req.Header.Set("Authorization", "Bearer "+app.AdminToken())
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("bad view %d %s", rr.Code, rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPut, "/api/settings", strings.NewReader(`{"theme":"light"}`))
+	req.Header.Set("Authorization", "Bearer "+app.AdminToken())
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"view":"board"`) {
+		t.Fatalf("theme-only body should leave layout: %d %s", rr.Code, rr.Body.String())
 	}
 }
 

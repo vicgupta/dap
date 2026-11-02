@@ -15,6 +15,16 @@ While `da serve` or `da run` is up, it writes `run.json` and holds `dap.lock`. O
 
 `da doctor` and `da plugin approve` start plugins when they open the directory themselves, then stop them on exit. The other commands do not start plugin processes unless a server is already running.
 
+## `da version`
+
+`da version`, `da --version`, and `da -V` print JSON and exit `0`.
+
+```json
+{ "ok": true, "version": "0.1.0" }
+```
+
+A release build also includes `release` (the tag without a leading `v`), `commit`, and `date`. A local `go build` omits those. Plugin compatibility uses `version`. A pre-release tag is not written into that field, because plugin semver rejects it.
+
 ## `da init`
 
 Creates the data directory (mode `0700`) and `config.json` if it is missing.

@@ -7,17 +7,20 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/vicgupta/dap/internal/core"
 	"github.com/vicgupta/dap/internal/guardrails"
+	"github.com/vicgupta/dap/internal/layout"
 	"github.com/vicgupta/dap/internal/model"
 	"github.com/vicgupta/dap/internal/web"
 )
@@ -103,10 +106,15 @@ func (s *Server) Handler() http.Handler {
 	static, _ := fs.Sub(web.Static, "static")
 	fonts, _ := fs.Sub(static, "fonts")
 	mux.Handle("GET /fonts/", http.StripPrefix("/fonts/", http.FileServer(http.FS(fonts))))
+	mux.HandleFunc("GET /layout.css", file(static, "layout.css"))
+	mux.HandleFunc("GET /layout-boot.js", file(static, "layout-boot.js"))
+	mux.HandleFunc("GET /layout-logic.js", file(static, "layout-logic.js"))
 	mux.HandleFunc("GET /app.css", file(static, "app.css"))
 	mux.HandleFunc("GET /app.js", file(static, "app.js"))
 	mux.HandleFunc("GET /favicon.svg", file(static, "favicon.svg"))
 	mux.HandleFunc("GET /{$}", s.index)
+	mux.HandleFunc("GET /api/settings", s.auth(s.getSettings))
+	mux.HandleFunc("PUT /api/settings", s.auth(s.putSettings))
 	mux.HandleFunc("GET /api/home", s.auth(s.home))
 	mux.HandleFunc("GET /api/inbox", s.auth(s.inbox))
 	mux.HandleFunc("POST /api/inbox/{id}/approve", s.auth(s.approve))
@@ -146,13 +154,47 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing ui", http.StatusInternalServerError)
 		return
 	}
+	prefs := s.App.Layout()
+	raw, _ := json.Marshal(prefs)
 	boot := `<meta name="dap-token" content="` + s.App.AdminToken() + `" />` +
-		`<meta name="dap-version" content="0.1.0" />`
-	html := bytes.Replace(b, []byte("<!--DAP_BOOT-->"), []byte(boot), 1)
+		`<meta name="dap-version" content="0.1.0" />` +
+		`<meta name="dap-density" content="` + prefs.PluginDensity() + `" />` +
+		`<meta name="dap-layout" content="` + html.EscapeString(string(raw)) + `" />`
+	page := injectRoot(bytes.Replace(b, []byte("<!--DAP_BOOT-->"), []byte(boot), 1), map[string]string{
+		"data-density":    prefs.PluginDensity(),
+		"data-home-view":  prefs.Home.View,
+		"data-inbox-view": prefs.Inbox.View,
+	})
 	secure(w, s.URL())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write(html)
+	_, _ = w.Write(page)
+}
+
+func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "layout": s.App.Layout()})
+}
+
+func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
+	// Only "layout" is written. A body that also carries "theme" (the appearance
+	// setting) does not erase that key on disk and does not require it here.
+	var body struct {
+		Layout *layout.Settings `json:"layout"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	if body.Layout == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "layout": s.App.Layout()})
+		return
+	}
+	next, err := s.App.SetLayout(*body.Layout)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "layout": next})
 }
 
 func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
@@ -543,7 +585,50 @@ func (s *Server) pluginRedirect(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "this plugin has no web UI", http.StatusNotFound)
 		return
 	}
-	http.Redirect(w, r, box.url, http.StatusFound)
+	density := layout.ChosenDensity(r.URL.Query().Get("density"), s.App.Layout().PluginDensity())
+	http.Redirect(w, r, withQuery(box.url, "density", density), http.StatusFound)
+}
+
+func withQuery(raw, key, value string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	q := u.Query()
+	q.Set(key, value)
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+func injectRoot(doc []byte, attrs map[string]string) []byte {
+	start := bytes.Index(doc, []byte("<html"))
+	if start < 0 {
+		return doc
+	}
+	rel := bytes.IndexByte(doc[start:], '>')
+	if rel < 0 {
+		return doc
+	}
+	end := start + rel
+	keys := make([]string, 0, len(attrs))
+	for k := range attrs {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	b.WriteString(`<html lang="en"`)
+	for _, k := range keys {
+		b.WriteByte(' ')
+		b.WriteString(k)
+		b.WriteString(`="`)
+		b.WriteString(html.EscapeString(attrs[k]))
+		b.WriteString(`"`)
+	}
+	b.WriteByte('>')
+	out := append([]byte{}, doc[:start]...)
+	out = append(out, b.String()...)
+	out = append(out, doc[end+1:]...)
+	return out
 }
 
 func file(static fs.FS, name string) http.HandlerFunc {

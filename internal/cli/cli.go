@@ -20,6 +20,7 @@ import (
 	"github.com/vicgupta/dap/internal/desktop"
 	"github.com/vicgupta/dap/internal/model"
 	"github.com/vicgupta/dap/internal/runinfo"
+	"github.com/vicgupta/dap/internal/version"
 )
 
 // Options wires the process streams. Tests pass their own.
@@ -85,6 +86,8 @@ func Run(args []string, opt Options) int {
 			break
 		}
 		result, err = cmdTile(data, opt.Stdin)
+	case "version", "--version", "-V":
+		result = versionInfo()
 	default:
 		err = fmt.Errorf("unknown command %q", rest[0])
 		code = 2
@@ -120,9 +123,27 @@ const usage = `da — Dashboard Agent Platform
   da log                list, or append when stdin is JSON
   da outcome            JSON on stdin
   da tile write         JSON on stdin
+  da version            (--version, -V)
 
 Global flag: --data <dir>   (default $DAP_HOME or ~/.dap)
 Every command prints JSON.`
+
+func versionInfo() map[string]any {
+	info := map[string]any{
+		"ok":      true,
+		"version": version.Version,
+	}
+	if version.Release != "" {
+		info["release"] = version.Release
+	}
+	if version.Commit != "" {
+		info["commit"] = version.Commit
+	}
+	if version.Date != "" {
+		info["date"] = version.Date
+	}
+	return info
+}
 
 func splitGlobal(args []string) (string, []string) {
 	data := os.Getenv("DAP_HOME")

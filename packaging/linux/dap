@@ -1,0 +1,5 @@
+#!/bin/sh
+# Open the DAP window. Same as `da run`.
+# Keep this script next to the `da` binary. Data stays in $DAP_HOME or ~/.dap.
+dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+exec "$dir/da" run
