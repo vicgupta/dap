@@ -4,7 +4,7 @@ A plugin is a directory with `plugin.yaml` and a program that speaks JSON-RPC 2.
 
 The machine-readable contract is [schemas/plugin.schema.json](../schemas/plugin.schema.json). `da plugin validate <path>` checks that schema, then the semantic rules in `internal/manifest`, then starts the process and calls `initialize`, `watch`, `propose`, `act`, `report`, and an unknown method. Quit sends `shutdown` separately. A missing `shutdown` does not fail that quit.
 
-This page is enough to write a plugin without reading the Go source. [plugins.md](plugins.md) is the shorter reference. [runtime.md](runtime.md) is how the scheduler, inbox, guardrails, and ledger behave. [cli.md](cli.md) is every `da` command.
+This page is enough to write a plugin without reading the Go source. [plugins.md](plugins.md) is the shorter reference. [runtime.md](runtime.md) is how the scheduler, inbox, guardrails, and ledger behave. [cli.md](cli.md) is every `da` command. To connect another service through Composio, use [Adding a Composio toolkit](#adding-a-composio-toolkit) at the bottom of this page.
 
 Core version: `0.1.0`. Interface: `dap.plugin.v1`.
 
@@ -424,7 +424,7 @@ if __name__ == "__main__":
     })
 ```
 
-`dap_plugin.Host` wraps config, scratch state, secrets, and `mail_threads` / `mail_send`. `mail_send` still requires an approved card. The helper never returns an OAuth token.
+`dap_plugin.Host` wraps config, scratch state, secrets, and `mail_threads` / `mail_send`. `mail_send` still requires an approved card. The helper never returns an OAuth token. Gmail and Outlook tokens stay with Composio; the host stores only the API key and connection ids. `POST /mail/draft` creates a draft without sending.
 
 ## Checklist
 
@@ -435,3 +435,86 @@ if __name__ == "__main__":
 - [ ] Unknown methods return a JSON-RPC error. Stdout has nothing else.
 - [ ] `da plugin validate .` prints `"ok": true`.
 - [ ] A person approves the install card before the plugin is enabled.
+
+## Adding a Composio toolkit
+
+Gmail and Outlook are already built in. Teams, calendars, contacts, files, and tasks are added without a new OAuth implementation and without changing `inbox-followups`. The connectivity layer, privacy rules, and why Teams is not connected yet are in [composio.md](composio.md).
+
+Do not change `internal/composio/client.go`. It already speaks Composio's REST API. Do not put the API key, a connection id, or a provider token in `plugin.yaml`, `toolkits.json`, the ledger, or a log line. A tool whose effects include `sends`, `spends`, or `deletes` does not run until an approved card covers it.
+
+### Configuration
+
+Create `composio/toolkits.json` in the data directory (`~/.dap`, or `$DAP_HOME`). Mode `0600`. The next Connections refresh loads it. A restart is not required.
+
+```json
+{
+  "toolkits": [
+    {
+      "id": "tasks",
+      "slug": "todoist",
+      "label": "Tasks",
+      "tools": [
+        {"slug": "TODOIST_GET_TASKS", "permission": "tasks.read"},
+        {"slug": "TODOIST_CREATE_TASK", "permission": "tasks.write", "effects": ["sends"]}
+      ]
+    }
+  ]
+}
+```
+
+The loader enforces these rules:
+
+- `id` is a short lowercase name. `slug` is the Composio toolkit slug.
+- `label` is the Connections card title. The card appears next to Gmail and Outlook, with **Connect Tasks**.
+- Each tool slug is the Composio tool name. `permission` looks like `tasks.read`.
+- `effects` may only be `sends`, `spends`, or `deletes`. Leave it off for a read.
+- Builtin ids (`gmail`, `outlook`) cannot be redefined. You cannot strip the send effect off `GMAIL_SEND_EMAIL`.
+- The file is refused if it contains an `api_key` or a `connection_id`.
+
+Find the real slug and tool names in Composio's toolkit docs. Confirm whether the toolkit accepts personal accounts or only work accounts before telling someone to connect it.
+
+### Call it from a plugin
+
+Declare the same permissions in `plugin.yaml`. A permission the manifest does not declare is denied.
+
+```yaml
+permissions:
+  - name: tasks.read
+    mode: allowed
+    description: Read tasks
+  - name: tasks.write
+    mode: ask_first
+    description: Create a task as you
+```
+
+After `initialize` has stored `api_base` and `token`:
+
+```http
+POST {api_base}/connect/execute
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{"toolkit":"tasks","tool":"TODOIST_GET_TASKS","arguments":{}}
+```
+
+A write that sends, spends, or deletes also needs the approved card id:
+
+```json
+{"toolkit":"tasks","tool":"TODOIST_CREATE_TASK","arguments":{"content":"Reply to Dana"},"card_id":"c_..."}
+```
+
+Propose that card the usual way (`kind: action`, `permission: tasks.write`, `effects: ["sends"]`). `act` calls `connect/execute` with the card id. Unknown tools are not forwarded to Composio. Arguments are not written to the ledger. A sensitive tool records `connect.exec` and the tool slug only.
+
+The person still saves the Composio API key and presses Connect. The plugin does not see the key.
+
+### A mailbox the inbox plugin will watch
+
+`inbox-followups` treats every connected toolkit with `"kind": "mail"` as another mailbox. It calls `/mail/threads`, `/mail/draft`, and `/mail/send`. It does not grow a provider branch.
+
+If the Composio tools accept the generic argument names (`user_id`, `max_results`, `query`, `body`, `subject`, `recipient_email`, `to`, `thread_id`, `message_id`), set `kind` to `mail` and `actions` to `threads`, `draft`, `draft_reply`, `send`, `reply`, and `profile`. The shared parser reads message lists shaped like Gmail or Microsoft Graph. Declare each action's tool under `tools` with `mail.read`, `mail.draft`, or `mail.send`. Send and reply tools need effect `sends`.
+
+### Thin adapter
+
+Gmail and Outlook argument names differ, so they have dedicated builders in `internal/mail/broker_composio.go` (`draftCall` and `sendCall`). A mailbox that needs the same treatment gets a branch there, plus a `Toolkit` in `Builtin()` in `internal/composio/registry.go` when it should ship in the binary instead of `toolkits.json`.
+
+Do not add a second HTTP client, a sidecar, or a copy of the OAuth flow. Connect, list, revoke, and the secret keeper already cover the new id. Test with Composio mocked (`go test ./internal/mail/ ./internal/composio/`). Do not call the live API from tests, and do not commit a real API key.

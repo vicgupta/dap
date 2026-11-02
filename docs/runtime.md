@@ -118,7 +118,8 @@ Kinds the core writes today:
 | `plugin.log` | `da log` or `POST /log` |
 | `tile.write` | `da tile write` or `POST /tile` |
 | `outcome` | `da outcome` |
-| `mail.connect`, `mail.disconnect`, `mail.sent`, `mail.undo` | Mailbox connection changes and sends. Allowed mail reads are not logged |
+| `mail.connect`, `mail.disconnect`, `mail.sent`, `mail.undo` | Mailbox connection changes and sends. Allowed mail reads and drafts are not logged. Messages do not include the API key or a connection id |
+| `connect.exec` | A generic Composio tool ran with a send, spend, or delete effect. The tool slug is recorded. Arguments are not |
 | `plugin.stop` | Quit asked the plugin to `shutdown`, or stopped it after the drain timeout |
 
 `plugin.stop` is written when DAP quits. Removing one plugin with `da plugin remove` still does not append a row.
@@ -127,7 +128,7 @@ Kinds the core writes today:
 
 ## Secrets
 
-`secrets.Keeper` is `Set`, `Get`, and `Delete` by service and account. Plugin HTTP uses service `dap.plugin.<plugin-name>`, so one plugin cannot read another's account names. Mail tokens use service `dap.mail` and are not returned on the plugin API.
+`secrets.Keeper` is `Set`, `Get`, and `Delete` by service and account. Plugin HTTP uses service `dap.plugin.<plugin-name>`, so one plugin cannot read another's account names. The Composio API key is service `dap.composio`, account `api_key`. Each toolkit's connection id is service `dap.composio`, account `conn.<toolkit>`. Direct Gmail and Microsoft Graph tokens, when those paths are selected, stay in service `dap.mail`. None of these values are returned on the plugin API, written to the ledger, or written to `mail/public.json`.
 
 `Open` builds the store like this:
 
@@ -189,8 +190,9 @@ Mode `0700` on the directory. JSON state files are mode `0600`.
 | `run.json` | While the server is up: `pid`, `addr`, `token`, `started`. Removed on a clean shutdown, before the lock is released. Mode `0600`. |
 | `plugin-data/<name>/` | The `data_dir` passed to `initialize`. |
 | `browser-profile/` | Private Chrome, Edge, or Chromium profile for the `da run` window. Quit can close that process without closing other browser windows. |
-| `mail/public.json` | Gmail and Outlook public client ids. Not a token. Mode `0600`. |
+| `mail/public.json` | Direct-path client ids and the composio/direct choice. Not a token and not the Composio API key. Mode `0600`. |
 | `mail/fake.json` | Demo mailbox threads and connection flag. |
+| `composio/toolkits.json` | Optional extra Composio toolkits. Not a secret. Refused if it contains an API key or connection id. Mode `0600`. |
 
 `state.json` keeps cards after `da plugin remove`. The ledger is never trimmed. There is no export command.
 

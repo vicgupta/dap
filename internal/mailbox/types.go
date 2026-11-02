@@ -44,6 +44,14 @@ type SendResult struct {
 	SentAt    time.Time `json:"sent_at"`
 }
 
+// DraftResult is a draft saved at the provider, or a local-only draft when
+// the selected path has no remote draft call.
+type DraftResult struct {
+	Provider string `json:"provider"`
+	DraftID  string `json:"draft_id,omitempty"`
+	Local    bool   `json:"local"`
+}
+
 // Throttle is exposed to doctor and the Connections screen.
 type Throttle struct {
 	Active bool      `json:"active"`
@@ -67,4 +75,16 @@ type Status struct {
 	CalendarEnabled bool     `json:"calendar_enabled"`
 	Broker          string   `json:"broker,omitempty"`
 	Installed       bool     `json:"installed"`
+	// Mode is composio or direct. Empty on the demo mailbox.
+	Mode string `json:"mode,omitempty"`
+	// Kind is mail for Gmail and Outlook. Plugins treat every mail row the same.
+	Kind string `json:"kind,omitempty"`
+	// Via is composio when that connection is the one in use.
+	Via string `json:"via,omitempty"`
+	// KeySaved reports that the Composio API key is in the secret keeper.
+	// The key itself is never copied onto this struct.
+	KeySaved bool `json:"key_saved"`
+	// DirectFallback is true when this row can use a non-Composio path.
+	DirectFallback bool   `json:"direct_fallback"`
+	Summary        string `json:"summary,omitempty"`
 }

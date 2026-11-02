@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""mail-graph — Outlook capability plugin. Tokens stay in the DAP process."""
+"""mail-graph — Outlook capability plugin. Composio holds the token unless Graph is selected."""
 
 import json
 import sys
@@ -20,7 +20,7 @@ def handle(method, params):
         return {
             "ready": True,
             "interface": "dap.plugin.v1",
-            "health": {"status": "ok", "message": "Outlook connector installed. Connect it from Connections."},
+            "health": {"status": "ok", "message": "Outlook is a Composio mailbox. Graph is the direct fallback."},
         }
     if method == "watch":
         return {

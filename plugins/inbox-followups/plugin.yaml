@@ -3,7 +3,7 @@ version: 0.1.0
 min_dap_version: 0.1.0
 type: watcher
 interface: dap.plugin.v1
-description: Follow-ups you owe, and threads waiting on someone else. Nothing sends without approval.
+description: Follow-ups you owe, and threads waiting on someone else. Gmail and Outlook are the same kind of Composio mailbox. Nothing sends without approval.
 entrypoint: inbox_followups.py
 permissions:
   - name: mail.read

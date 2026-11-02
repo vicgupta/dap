@@ -14,7 +14,9 @@ Core version: `0.1.0` (`internal/version`). Go `1.22` or newer.
 | [docs/runtime.md](docs/runtime.md) | Scheduler, inbox, guardrails, ledger, secrets, doctor, data directory, limitations |
 | [docs/layout.md](docs/layout.md) | Home and inbox card layouts, density, and the plugin contract |
 | [docs/theme.md](docs/theme.md) | System, Light, and Dark, and how plugin pages follow them |
-| [docs/inbox-followups.md](docs/inbox-followups.md) | Follow-ups watcher, Connections, Gmail and Outlook sign-in |
+| [docs/inbox-followups.md](docs/inbox-followups.md) | Follow-ups watcher, Connections, Gmail and Outlook |
+| [docs/composio.md](docs/composio.md) | Composio connectivity layer, setup, privacy, releases |
+| [docs/plugin-authoring.md](docs/plugin-authoring.md) | How to add another Composio toolkit |
 | [docs/release.md](docs/release.md) | Release install, Gatekeeper, SmartScreen, checksums |
 
 ## Install the macOS pre-release
@@ -129,7 +131,7 @@ A plugin with a `ui` block is served on its own `127.0.0.1` port. The core route
 - **Activity.** The ledger, newest first.
 - **Guardrails.** The baked-in rules, each permission's effective mode, and recent checks. A control can tighten a permission. It cannot loosen one.
 - **Plugins.** Review permissions in plain language, approve the install, see health, open a plugin UI, or remove a plugin.
-- **Connections.** Demo mailbox, Gmail, and Outlook. Setup is in [docs/inbox-followups.md](docs/inbox-followups.md).
+- **Connections.** One Composio API key, then Connect Gmail and Connect Outlook. More toolkits show up here when they are added. Setup is in [docs/composio.md](docs/composio.md).
 - **Create plugin.** Describe the job in plain words, pick a type and a coding agent that is already on `PATH` (Claude Code, Codex, or OpenCode). DAP scaffolds a draft, runs that agent with your login, validates, and puts a change card in the inbox. The plugin is installed only after you approve the card.
 - **Quit.** Bottom of the sidebar. Stops scheduled agents, shuts plugins down, and exits. `da quit` does the same.
 
@@ -144,7 +146,7 @@ Every check is `allowed`, `ask_first`, or `never`.
 - You can tighten a rule (`allowed` → `ask_first` → `never`). An override cannot make a rule looser than the manifest.
 - During a run, the core may act immediately on a plugin card that is `allowed` and has no send, spend, or delete. Cards submitted over HTTP or `da propose` wait in the inbox. `da propose` creates an external card: approval does not call the plugin's `act`. Finish it with `da outcome`.
 
-There are no operating-system notifications. Mail leaves the machine only through the host mail broker, and only after an approved card. Pending cards never block a plugin.
+There are no operating-system notifications. Gmail and Outlook go through the host, which calls Composio, and only after an approved card when the action sends. Composio holds the provider tokens. The API key and connection ids stay in the secret keeper. The direct Microsoft Graph path, and the legacy direct Gmail path, talk to Microsoft or Google from this laptop instead. Pending cards never block a plugin.
 
 ## Scheduler
 
@@ -170,7 +172,7 @@ Plugin secrets are stored as service `dap.plugin.<name>` and the HTTP API allows
 
 - `plugins/hello-watch` is a watcher. Every 15 minutes it proposes "Say hello". The permission `demo.greet` is ask-first, and the card does not send. Approving it writes the result to the ledger.
 - `plugins/workflow` is a workflow with a step editor at `/plugins/workflow/`. "Pull the digest" is allowed and runs. "Draft the team note" sends, so it waits. "Save the summary" runs after that approval. Saving the step list creates a change card.
-- `plugins/mail-fake`, `plugins/mail-gmail`, and `plugins/mail-graph` are mailbox capabilities. `plugins/inbox-followups` proposes drafts. Approving a card is what sends it. See [docs/inbox-followups.md](docs/inbox-followups.md).
+- `plugins/mail-fake`, `plugins/mail-gmail`, and `plugins/mail-graph` are mailbox capabilities. `plugins/inbox-followups` proposes drafts for Gmail and Outlook the same way. Approving a card is what sends it. See [docs/composio.md](docs/composio.md) and [docs/inbox-followups.md](docs/inbox-followups.md).
 
 Install does not copy the folder. DAP records the absolute path and runs the package in place. A dependency must already be installed, and its version must satisfy the range. Adding a permission, or loosening a mode, requires `da plugin approve <name>` or the Plugins page before that plugin starts again.
 

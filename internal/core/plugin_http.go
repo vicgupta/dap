@@ -286,6 +286,35 @@ func (a *App) routePlugin(w http.ResponseWriter, r *http.Request, plugin, rest s
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "card": card})
 	case r.Method == http.MethodGet && rest == "mail/status":
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "connections": a.MailStatuses()})
+	case r.Method == http.MethodPost && rest == "mail/draft":
+		var draft mail.SendRequest
+		if err := decode(r, &draft); err != nil {
+			writeErr(w, err)
+			return
+		}
+		res, err := a.MailDraft(r.Context(), plugin, draft)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "result": res})
+	case r.Method == http.MethodPost && rest == "connect/execute":
+		var body struct {
+			Toolkit   string         `json:"toolkit"`
+			Tool      string         `json:"tool"`
+			Arguments map[string]any `json:"arguments"`
+			CardID    string         `json:"card_id"`
+		}
+		if err := decode(r, &body); err != nil {
+			writeErr(w, err)
+			return
+		}
+		raw, err := a.ConnectExecute(r.Context(), plugin, body.Toolkit, body.Tool, body.Arguments, body.CardID)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "data": json.RawMessage(raw)})
 	case r.Method == http.MethodGet && rest == "mail/threads":
 		threads, err := a.MailThreads(r.Context(), plugin, r.URL.Query().Get("provider"))
 		if err != nil {

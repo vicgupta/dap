@@ -351,7 +351,7 @@ kbd {
 
 .editor, .reject-box, .snooze-box { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
 label.field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); font-weight: 500; }
-input[type="text"], input[type="search"], textarea {
+input[type="text"], input[type="password"], input[type="search"], textarea {
   width: 100%;
   border: 1px solid var(--line-strong);
   border-radius: 10px;

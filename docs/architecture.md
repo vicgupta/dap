@@ -51,7 +51,7 @@ The admin API used by the UI and the CLI, all under the admin token:
 | POST | `/api/plugins/install` with `path` and `approve` |
 | POST | `/api/plugins/{name}/remove`, `approve`, `run` |
 | POST | `/api/propose`, `/api/check`, `/api/log`, `/api/outcome`, `/api/tile` |
-| POST | `/api/connections/{provider}/setup`, `connect`, `disconnect` (`gmail`, `graph`, or `fake`) |
+| POST | `/api/connections/{provider}/setup`, `connect`, `disconnect`. `provider` is `gmail`, `outlook` (alias `graph`), `fake`, `composio` (API key only), or a toolkit id from `composio/toolkits.json` |
 | POST | `/api/create/scaffold`, `/api/create/run`, `/api/create/validate`, `/api/create/propose` |
 | GET | `/api/create/run/{id}` |
 | POST | `/api/create/run/{id}/cancel` |
@@ -79,11 +79,13 @@ Plugin API routes (suffixes of `api_base`, which is `http://127.0.0.1:<port>/v1/
 | GET | `/inbox` | This plugin's cards, including bodies |
 | POST | `/inbox/{id}/approve`, `edit`, `reject`, `snooze` | Same guardrails as the core inbox. The plugin token cannot touch another plugin's cards |
 | GET | `/mail/status` | Mailbox connection rows. No tokens |
-| GET | `/mail/threads` | Requires declared `mail.read` |
+| GET | `/mail/threads` | Requires declared `mail.read`. Gmail and Outlook are interchangeable. |
+| POST | `/mail/draft` | Requires declared `mail.draft`. Creates a provider draft and does not send. |
 | POST | `/mail/send` | Requires declared `mail.send`, effect `sends`, and a covering approved card |
 | POST | `/mail/undo` | Demo mailbox only |
+| POST | `/connect/execute` | Runs one tool declared on a toolkit. The plugin must declare that tool's permission. A send, spend, or delete also needs `card_id` of an approved card. Arguments are not written to the ledger. |
 
-Mail tokens live in the host, service `dap.mail`. See [inbox-followups.md](inbox-followups.md).
+Composio connection ids and the API key live in the host, service `dap.composio`. Direct Gmail and Microsoft Graph tokens, when those paths are selected, stay in service `dap.mail`. See [composio.md](composio.md) and [inbox-followups.md](inbox-followups.md).
 
 A missing or wrong bearer token is HTTP 401. Bodies are limited to 1 MiB.
 
