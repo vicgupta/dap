@@ -107,7 +107,9 @@ The body is `version`, `ok`, and `checks`. Each check has `name`, `ok`, `detail`
 | `plugin:<plugin>` | not running, health is not `ok`, permissions need approval, or start failed |
 | `permissions:<plugin>` | the manifest asked for a permission that is not approved |
 | `agents` | never. Missing agents are listed and `ok` stays true |
-| `mail:<provider>` | an installed Gmail or Outlook mailbox is connected and refresh failed. `provider` is `gmail`, `graph`, or `fake`. Detail includes send scope and any throttle window. The demo mailbox does not fail doctor |
+| `runtime:node` | Node is installed and older than 20. Missing Node is informational and names https://nodejs.org |
+| `runtime:bun` | never. Bun is optional. The detail says how to install it from https://bun.sh |
+| `mail:<provider>` | an installed mailbox is connected and its connection check failed. `provider` is `gmail`, `outlook`, `fake`, or a toolkit added in `composio/toolkits.json`. Composio rows fail when the connection is no longer active. Direct Gmail and Microsoft Graph fail when token refresh fails. Detail says that sends wait for an approved card, or that a direct send scope is missing. The demo mailbox does not fail doctor |
 
 Exit code `1` when the top-level `ok` is false. The report is still on stdout.
 
@@ -120,6 +122,9 @@ da plugin install [--approve] <path>
 da plugin list
 da plugin remove <name>
 da plugin approve <name>
+da plugin new <name> [--type watcher|capability|workflow] [--lang ts|python] [--ui] [--dir path]
+da plugin validate <path>
+da plugin dev <path>
 ```
 
 `install` reads `<path>/plugin.yaml`. Without `--approve` it validates and returns the permissions. Nothing is written.
@@ -142,6 +147,42 @@ da plugin approve <name>
 `remove` stops the process, drops it from the registry, and leaves the ledger and old cards in place.
 
 `approve` accepts the current manifest's permission list and starts the plugin. Use it after you edit `plugin.yaml` to add a permission or change a mode from `ask_first` to `allowed`. A tighter mode does not need a new approval.
+
+## `da plugin new`
+
+Writes a plugin that already passes `da plugin validate`.
+
+```text
+da plugin new <name> [--type watcher|capability|workflow] [--lang ts|python] [--ui] [--dir path] [--description text]
+```
+
+`--type` defaults to `watcher`. `--lang` defaults to `ts`. `python` is the other supported language. The directory defaults to `./<name>` and must be empty or missing. A TypeScript skeleton contains `package.json`, `tsconfig.json`, `src/index.ts` using `@dap/plugin-sdk`, a `node:test`, `AGENTS.md`, and `CLAUDE.md`. `runtime: node` and `entrypoint: dist/index.js` tell DAP to launch the compiled file with Node.js 20 or newer. Set `runtime: bun` and point `entrypoint` at `src/index.ts` to run TypeScript with Bun instead. `--ui` adds a page that reads `?theme=` before paint.
+
+```bash
+da plugin new note-watch --type watcher
+```
+
+```json
+{"ok": true, "path": "/home/you/note-watch", "name": "note-watch", "type": "watcher", "lang": "ts"}
+```
+
+## `da plugin validate`
+
+Checks [schemas/plugin.schema.json](../schemas/plugin.schema.json), then the manifest rules. A TypeScript plugin with a `build` script is built first (`npm install` when `typescript` is missing, then `npm run build`) unless `dist/index.js` is already newer than `src`. Then it starts the process and calls `initialize`, `watch`, `propose`, `act`, `report`, and an unknown method. The API base in that run is a dummy address, so those methods must return a valid result when the host cannot be reached.
+
+```bash
+da plugin validate ./note-watch
+```
+
+Stdout is one JSON object with `ok` and `checks`. Each check has `name`, `ok`, and `detail`. Exit code `1` when `ok` is false. The report is still on stdout so an agent can fix the named check.
+
+## `da plugin dev`
+
+Runs one plugin in the foreground and restarts it when a file in the directory changes. Output is one JSON object per line (`ready`, `stderr`, `reload`, `error`, `stop`). Ctrl+C stops it. It does not take the data-directory lock.
+
+```bash
+da plugin dev ./note-watch
+```
 
 ## `da context`
 

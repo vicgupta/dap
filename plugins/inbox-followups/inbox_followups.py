@@ -115,13 +115,47 @@ def why_for(thread, kind):
     return "They wrote last. This is waiting on you."
 
 
+MAILBOXES = ("gmail", "outlook", "graph", "fake")
+
+
 def providers():
     data = api("GET", "/mail/status")
     found = []
     for item in data.get("connections") or []:
-        if item.get("connected"):
-            found.append(item.get("provider"))
+        provider = item.get("provider")
+        if item.get("connected") and provider in MAILBOXES:
+            found.append(provider)
     return found
+
+
+def save_draft(item, body):
+    provider = item.get("provider")
+    if provider not in ("gmail", "outlook", "graph"):
+        return
+    result = api("POST", "/mail/draft", {
+        "provider": provider,
+        "thread_id": item.get("thread_id") or "",
+        "message_id": item.get("message_id") or "",
+        "to": item.get("to") or item.get("with_email") or "",
+        "subject": item.get("subject") or "",
+        "body": body,
+    })
+    if not isinstance(result, dict) or result.get("ok") is False:
+        return
+    draft_id = (result.get("result") or {}).get("draft_id") or ""
+    if draft_id:
+        item["draft_id"] = draft_id
+
+
+def attach_draft(card):
+    if card.get("kind") != "action":
+        return
+    payload = card.get("payload") or {}
+    if payload.get("batch"):
+        for item in payload["batch"]:
+            save_draft(item, item.get("body") or card.get("body") or "")
+        return
+    save_draft(payload, card.get("body") or "")
 
 
 def threads_for(provider):
@@ -233,7 +267,9 @@ def handle(method, params):
                 if kind == "ack":
                     acks.append(thread)
                     continue
-                cards.append(card_for(thread, kind, signature))
+                card = card_for(thread, kind, signature)
+                attach_draft(card)
+                cards.append(card)
         if acks:
             names = [t.get("with_name") or t.get("with_email") for t in acks]
             cards.append({
@@ -260,6 +296,7 @@ def handle(method, params):
                 },
                 "evidence": [{"label": "Threads", "ref": str(len(acks))}],
             })
+            attach_draft(cards[-1])
         if cfg.get("preview_rule") and not change_open and not domains:
             cards.append({
                 "title": "Skip follow-ups to your company domain",

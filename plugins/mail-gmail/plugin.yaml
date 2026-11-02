@@ -3,7 +3,7 @@ version: 0.1.0
 min_dap_version: 0.1.0
 type: capability
 interface: dap.plugin.v1
-description: Gmail mailbox. DAP holds the OAuth token and plugins never see it.
+description: Gmail through Composio. The host stores the connection id. Plugins never see it.
 entrypoint: mail_gmail.py
 permissions:
   - name: mail.read

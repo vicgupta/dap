@@ -51,28 +51,33 @@ func (a *App) finishApproved(id string) (model.Card, error) {
 		return a.finishChatCard(existing)
 	}
 	rec := snap.Plugins[existing.Plugin]
-	if rec == nil {
+	installing := installPayload(existing) != ""
+	if rec == nil && !installing {
 		return model.Card{}, fmt.Errorf("%w: plugin %s", ErrNotFound, existing.Plugin)
 	}
 	if existing.Status != model.StatusPending && existing.Status != model.StatusSnoozed {
 		return existing, fmt.Errorf("%w: card is %s", ErrBadState, existing.Status)
 	}
-	res := a.evaluate(rec, existing.Permission, existing.Effects, true)
-	a.rememberCheck(existing.Plugin, existing.Permission, existing.Effects, id, res)
-	if res.Decision == model.ModeNever {
-		_ = a.store.Update(func(st *store.State) error {
-			c, i, err := indexCard(st.Cards, id)
-			if err != nil {
-				return err
-			}
-			_ = c
-			st.Cards[i].Status = model.StatusBlocked
-			st.Cards[i].Reason = res.Reason
-			st.Cards[i].UpdatedAt = a.now().UTC()
-			return nil
-		})
-		a.log(ledger.Entry{Plugin: existing.Plugin, Kind: ledger.KindBlocked, CardID: id, Message: res.Reason})
-		return model.Card{}, fmt.Errorf("%w: %s", ErrBlocked, res.Reason)
+	if rec == nil {
+		// A new plugin has no manifest yet. The change card is the approval.
+	} else {
+		res := a.evaluate(rec, existing.Permission, existing.Effects, true)
+		a.rememberCheck(existing.Plugin, existing.Permission, existing.Effects, id, res)
+		if res.Decision == model.ModeNever {
+			_ = a.store.Update(func(st *store.State) error {
+				c, i, err := indexCard(st.Cards, id)
+				if err != nil {
+					return err
+				}
+				_ = c
+				st.Cards[i].Status = model.StatusBlocked
+				st.Cards[i].Reason = res.Reason
+				st.Cards[i].UpdatedAt = a.now().UTC()
+				return nil
+			})
+			a.log(ledger.Entry{Plugin: existing.Plugin, Kind: ledger.KindBlocked, CardID: id, Message: res.Reason})
+			return model.Card{}, fmt.Errorf("%w: %s", ErrBlocked, res.Reason)
+		}
 	}
 
 	var card model.Card
@@ -98,6 +103,12 @@ func (a *App) finishApproved(id string) (model.Card, error) {
 	a.log(ledger.Entry{Plugin: card.Plugin, Kind: ledger.KindApproved, CardID: card.ID, Message: "Approved “" + card.Title + "”"})
 
 	if card.Kind == model.KindChange {
+		if handled, err := a.applyPluginPayload(card); handled {
+			if err != nil {
+				return a.failCard(card.ID, err)
+			}
+			return a.completeCard(card.ID, &model.ActResult{Status: "done", Summary: "Applied the approved plugin change."})
+		}
 		if err := a.applyChange(card); err != nil {
 			return a.failCard(card.ID, err)
 		}

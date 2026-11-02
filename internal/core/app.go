@@ -51,6 +51,7 @@ type App struct {
 	apiSrv       *http.Server
 	apiBase      string
 	adminToken   string
+	agentJobs    *sync.Map
 	stopping     bool
 	inflightOps  int
 	inflightActs int

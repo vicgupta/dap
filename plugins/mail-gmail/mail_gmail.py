@@ -20,7 +20,7 @@ def handle(method, params):
         return {
             "ready": True,
             "interface": "dap.plugin.v1",
-            "health": {"status": "ok", "message": "Gmail connector installed. Connect it from Connections."},
+            "health": {"status": "ok", "message": "Gmail is a Composio mailbox. Connect it from Connections."},
         }
     if method == "watch":
         return {

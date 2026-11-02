@@ -138,6 +138,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/plugins/{name}/remove", s.auth(s.remove))
 	mux.HandleFunc("POST /api/plugins/{name}/approve", s.auth(s.approveManifest))
 	mux.HandleFunc("POST /api/plugins/{name}/run", s.auth(s.run))
+	mux.HandleFunc("POST /api/create/scaffold", s.auth(s.createScaffold))
+	mux.HandleFunc("POST /api/create/run", s.auth(s.createRun))
+	mux.HandleFunc("GET /api/create/run/{id}", s.auth(s.createRunGet))
+	mux.HandleFunc("POST /api/create/run/{id}/cancel", s.auth(s.createRunCancel))
+	mux.HandleFunc("POST /api/create/validate", s.auth(s.createValidate))
+	mux.HandleFunc("POST /api/create/propose", s.auth(s.createPropose))
 	mux.HandleFunc("GET /api/doctor", s.auth(s.doctor))
 	mux.HandleFunc("GET /api/connections", s.auth(s.connections))
 	mux.HandleFunc("POST /api/connections/{provider}/setup", s.auth(s.connectionSetup))
@@ -422,20 +428,104 @@ func (s *Server) run(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+func (s *Server) createScaffold(w http.ResponseWriter, r *http.Request) {
+	var req core.DraftRequest
+	if err := readJSON(r, &req); err != nil {
+		writeErr(w, err)
+		return
+	}
+	res, err := s.App.ScaffoldDraft(req)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+func (s *Server) createRun(w http.ResponseWriter, r *http.Request) {
+	var req core.AgentStart
+	if err := readJSON(r, &req); err != nil {
+		writeErr(w, err)
+		return
+	}
+	res, err := s.App.StartAgent(req)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+func (s *Server) createRunGet(w http.ResponseWriter, r *http.Request) {
+	res, err := s.App.AgentRun(r.PathValue("id"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+func (s *Server) createRunCancel(w http.ResponseWriter, r *http.Request) {
+	if err := s.App.CancelAgent(r.PathValue("id")); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) createValidate(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Path   string `json:"path"`
+		Plugin string `json:"plugin"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeErr(w, err)
+		return
+	}
+	rep, err := s.App.ValidateDraft(req.Path, req.Plugin)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rep)
+}
+
+func (s *Server) createPropose(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Path   string `json:"path"`
+		Plugin string `json:"plugin"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeErr(w, err)
+		return
+	}
+	card, err := s.App.ProposePluginChange(req.Path, req.Plugin)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "card": card})
+}
+
 func (s *Server) connections(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "connections": s.App.MailStatuses(), "agents": core.DetectAgents()})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok": true, "key_saved": s.App.ComposioKeySaved(),
+		"connections": s.App.MailStatuses(), "agents": core.DetectAgents(),
+	})
 }
 
 func (s *Server) connectionSetup(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ClientID string `json:"client_id"`
-		Calendar bool   `json:"calendar"`
+		ClientID *string `json:"client_id"`
+		Calendar *bool   `json:"calendar"`
+		Mode     *string `json:"mode"`
+		APIKey   *string `json:"api_key"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeErr(w, err)
 		return
 	}
-	if err := s.App.MailSetup(r.PathValue("provider"), body.ClientID, body.Calendar); err != nil {
+	if err := s.App.ConfigureConnection(r.PathValue("provider"), body.ClientID, body.Calendar, body.Mode, body.APIKey); err != nil {
 		writeErr(w, err)
 		return
 	}
