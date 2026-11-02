@@ -3,6 +3,7 @@ package pluginauthor
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -33,6 +34,56 @@ func TestScaffoldPythonValidates(t *testing.T) {
 func TestScaffoldRejectsBadName(t *testing.T) {
 	if _, err := Scaffold(Options{Name: "Bad Name"}); err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestScaffoldMailPermissionsAndMarker(t *testing.T) {
+	dir := t.TempDir()
+	path, err := Scaffold(Options{
+		Name:        "inbox-triage",
+		Type:        "watcher",
+		Lang:        "python",
+		Dir:         filepath.Join(dir, "inbox-triage"),
+		Description: `Create a DAP plugin called "inbox-triage". Every hour, call GET /mail/threads.`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(path, "plugin.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(raw)
+	if !strings.Contains(text, "name: mail.read") || !strings.Contains(text, "name: mail.draft") {
+		t.Fatalf("%s", text)
+	}
+	if strings.Contains(text, "inbox.triage") {
+		t.Fatalf("demo permission should not sit beside mail: %s", text)
+	}
+	if !MarkerPresent(path) {
+		t.Fatal("starter marker missing")
+	}
+	helper, err := os.ReadFile(filepath.Join(path, "dap_plugin.py"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(helper), "def mail_draft") || !strings.Contains(string(helper), "newer_than") {
+		t.Fatal("python helper is missing mail_draft or newer_than")
+	}
+	rep := Validate(path)
+	if !rep.OK {
+		t.Fatalf("%+v", rep.Checks)
+	}
+	plain, err := Scaffold(Options{Name: "note-watch", Type: "watcher", Lang: "python", Dir: filepath.Join(dir, "note-watch"), Description: "Notice a local note."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err = os.ReadFile(filepath.Join(plain, "plugin.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "mail.read") {
+		t.Fatalf("unrelated plugin declared mail: %s", raw)
 	}
 }
 

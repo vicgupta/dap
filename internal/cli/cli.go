@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vicgupta/dap/internal/agentrun"
 	"github.com/vicgupta/dap/internal/api"
 	"github.com/vicgupta/dap/internal/core"
 	"github.com/vicgupta/dap/internal/desktop"
@@ -35,6 +36,7 @@ type Options struct {
 
 // Run executes one da invocation.
 func Run(args []string, opt Options) int {
+	agentrun.UseHostPath()
 	if opt.Stdin == nil {
 		opt.Stdin = os.Stdin
 	}

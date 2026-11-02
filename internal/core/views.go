@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vicgupta/dap/internal/agentrun"
 	"github.com/vicgupta/dap/internal/guardrails"
 	"github.com/vicgupta/dap/internal/ledger"
 	"github.com/vicgupta/dap/internal/manifest"
@@ -480,14 +481,10 @@ func commandVersion(path string) string {
 
 // DetectAgents looks for the coding agents DAP can hand work to later.
 func DetectAgents() []AgentInfo {
-	out := make([]AgentInfo, 0, 3)
-	for _, name := range []string{"claude", "codex", "opencode"} {
-		info := AgentInfo{Name: name}
-		if path, err := exec.LookPath(name); err == nil {
-			info.Found = true
-			info.Path = path
-		}
-		out = append(out, info)
+	found := agentrun.Detect()
+	out := make([]AgentInfo, 0, len(found))
+	for _, info := range found {
+		out = append(out, AgentInfo{Name: info.ID, Found: info.Found, Path: info.Path})
 	}
 	return out
 }

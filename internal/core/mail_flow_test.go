@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vicgupta/dap/internal/mail"
 	"github.com/vicgupta/dap/internal/model"
@@ -59,6 +60,18 @@ func TestInboxFollowupsApprovesSendAndBlocksBareSend(t *testing.T) {
 	_, err = app.MailThreads(context.Background(), "hello-watch", "fake")
 	if !errors.Is(err, ErrDenied) {
 		t.Fatalf("hello-watch must not read mail, got %v", err)
+	}
+	recent, err := app.MailThreadsQuery(context.Background(), "inbox-followups", "fake", mail.ListOptions{NewerThan: "1d"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recent) != 4 {
+		t.Fatalf("last 24h should keep the four recent acknowledgements, got %d", len(recent))
+	}
+	for _, th := range recent {
+		if time.Since(th.LastAt) > 24*time.Hour {
+			t.Fatalf("thread %s is older than a day: %s", th.ID, th.LastAt)
+		}
 	}
 	done, err := app.Approve(dana.ID)
 	if err != nil {

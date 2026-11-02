@@ -77,6 +77,27 @@ func TestListAndSend(t *testing.T) {
 	_ = time.Now()
 }
 
+func TestListThreadsQueryUsesWindow(t *testing.T) {
+	var query string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/gmail/v1/users/me/threads":
+			query = r.URL.Query().Get("q")
+			_, _ = w.Write([]byte(`{"threads":[]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	c := &Client{API: srv.URL}
+	if _, err := c.ListThreadsQuery(context.Background(), "tok", "vic@example.com", "newer_than:1d"); err != nil {
+		t.Fatal(err)
+	}
+	if query != "newer_than:1d" {
+		t.Fatalf("q %q", query)
+	}
+}
+
 func TestRetryAfterLongThrottle(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Retry-After", "30")

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/vicgupta/dap/internal/secrets"
 )
@@ -20,6 +21,7 @@ func TestComposioGmailAndOutlook(t *testing.T) {
 	var mu sync.Mutex
 	status := "INITIATED"
 	var tools []string
+	var bodies []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		mu.Lock()
@@ -38,7 +40,9 @@ func TestComposioGmailAndOutlook(t *testing.T) {
 			w.WriteHeader(http.StatusNoContent)
 		case strings.HasPrefix(r.URL.Path, "/api/v3.1/tools/execute/"):
 			tool := strings.TrimPrefix(r.URL.Path, "/api/v3.1/tools/execute/")
+			rawBody, _ := io.ReadAll(r.Body)
 			tools = append(tools, tool)
+			bodies = append(bodies, tool+" "+string(rawBody))
 			switch tool {
 			case "GMAIL_GET_PROFILE":
 				_, _ = io.WriteString(w, `{"successful":true,"data":{"emailAddress":"vic@example.com"}}`)
@@ -75,6 +79,7 @@ func TestComposioGmailAndOutlook(t *testing.T) {
 		t.Fatal(err)
 	}
 	b.ComposioAPI = srv.URL
+	b.SetClock(func() time.Time { return time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC) })
 	b.SetOpener(func(u string) error {
 		resp, err := http.Get(u)
 		if err != nil {
@@ -116,6 +121,13 @@ func TestComposioGmailAndOutlook(t *testing.T) {
 	if err != nil || len(threads) != 1 || threads[0].WithEmail != "dana@northwind.co" || threads[0].Provider != "gmail" {
 		t.Fatalf("%v %+v", err, threads)
 	}
+	day, err := b.ThreadsQuery(context.Background(), "gmail", ListOptions{NewerThan: "1d"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(day) != 0 {
+		t.Fatalf("2026-10-01 thread should fall outside a 1d window from now: %+v", day)
+	}
 	draft, err := b.Draft(context.Background(), SendRequest{Provider: "gmail", ThreadID: "t1", To: "dana@northwind.co", Body: "Thanks"})
 	if err != nil || draft.DraftID != "r-draft" || draft.Local {
 		t.Fatalf("%v %+v", err, draft)
@@ -137,6 +149,10 @@ func TestComposioGmailAndOutlook(t *testing.T) {
 	if err != nil || len(othreads) != 1 || othreads[0].Provider != "outlook" {
 		t.Fatalf("%v %+v", err, othreads)
 	}
+	_, err = b.ThreadsQuery(context.Background(), "outlook", ListOptions{Since: time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)})
+	if err != nil {
+		t.Fatal(err)
+	}
 	odraft, err := b.Draft(context.Background(), SendRequest{Provider: "graph", MessageID: "AAMk", To: "dana@northwind.co", Body: "Thanks"})
 	if err != nil || odraft.DraftID != "draft-ol" {
 		t.Fatalf("%v %+v", err, odraft)
@@ -156,7 +172,14 @@ func TestComposioGmailAndOutlook(t *testing.T) {
 	}
 	mu.Lock()
 	joined := strings.Join(tools, ",")
+	bodyJoined := strings.Join(bodies, "\n")
 	mu.Unlock()
+	if !strings.Contains(bodyJoined, "newer_than:30d") || !strings.Contains(bodyJoined, "newer_than:1d") {
+		t.Fatalf("gmail query missing from %s", bodyJoined)
+	}
+	if !strings.Contains(bodyJoined, "receivedDateTime ge 2026-11-01T00:00:00Z") {
+		t.Fatalf("outlook filter missing from %s", bodyJoined)
+	}
 	for _, want := range []string{"GMAIL_FETCH_EMAILS", "GMAIL_CREATE_EMAIL_DRAFT", "GMAIL_REPLY_TO_THREAD", "OUTLOOK_LIST_MESSAGES", "OUTLOOK_CREATE_DRAFT_REPLY", "OUTLOOK_REPLY_EMAIL"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("missing %s in %s", want, joined)

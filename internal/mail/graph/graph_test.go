@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/vicgupta/dap/internal/mail/httpx"
 	"github.com/vicgupta/dap/internal/mailbox"
@@ -88,6 +89,35 @@ func TestDeltaConversationReplyAndRetry(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestListThreadsSinceDropsOlder(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/inbox/messages/delta"):
+			_, _ = w.Write([]byte(`{
+				"value":[
+					{"id":"old","conversationId":"oldc","subject":"Old","bodyPreview":"old","receivedDateTime":"2026-10-01T00:00:00Z","from":{"emailAddress":{"address":"a@b.co"}}},
+					{"id":"new","conversationId":"newc","subject":"New","bodyPreview":"new","receivedDateTime":"2026-11-02T00:00:00Z","from":{"emailAddress":{"address":"c@d.co"}}}
+				],
+				"@odata.deltaLink":"http://` + r.Host + `/done"
+			}`))
+		case strings.Contains(r.URL.Path, "/sentitems/messages/delta"):
+			_, _ = w.Write([]byte(`{"value":[],"@odata.deltaLink":"http://` + r.Host + `/sent"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	c := &Client{API: srv.URL + "/v1.0"}
+	since := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	threads, _, err := c.ListThreadsSince(context.Background(), "tok", "vic@outlook.com", DeltaCursor{}, since)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(threads) != 1 || threads[0].ID != "newc" {
+		t.Fatalf("%+v", threads)
 	}
 }
 

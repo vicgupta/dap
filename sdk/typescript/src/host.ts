@@ -1,4 +1,4 @@
-import type { CardDraft, CheckRequest, CheckResult, Evidence, InitParams, SendRequest, Tile } from "./types.js";
+import type { CardDraft, CheckRequest, CheckResult, DraftRequest, Evidence, InitParams, MailProvider, MailQuery, SendRequest, Tile } from "./types.js";
 
 export class Host {
   constructor(private readonly init: InitParams) {}
@@ -67,8 +67,15 @@ export class Host {
     return this.call("POST", "/secret/delete", { account });
   }
 
-  mailThreads(provider: "gmail" | "graph" | "fake"): Promise<{ threads: unknown[] }> {
-    return this.call("GET", "/mail/threads?provider=" + encodeURIComponent(provider));
+  mailThreads(provider: MailProvider, query?: MailQuery): Promise<{ threads: unknown[] }> {
+    const q = new URLSearchParams({ provider });
+    if (query?.since) q.set("since", query.since);
+    if (query?.newer_than) q.set("newer_than", query.newer_than);
+    return this.call("GET", "/mail/threads?" + q.toString());
+  }
+
+  mailDraft(req: DraftRequest): Promise<unknown> {
+    return this.call("POST", "/mail/draft", req);
   }
 
   mailSend(req: SendRequest): Promise<unknown> {

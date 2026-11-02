@@ -29,7 +29,7 @@ const plugin: PluginHandler = {
 serve(plugin);
 ```
 
-`Host` (created for you inside `serve` after `initialize`) calls the scoped plugin API: config is on `init.config`, scratch state is `putState` / `state`, secrets are `secretGet` / `secretSet` / `secretDelete`, and mail is `mailThreads` / `mailSend`. `mailSend` still requires an approved card. The plugin never sees an OAuth token.
+`Host` (created for you inside `serve` after `initialize`) calls the scoped plugin API: config is on `init.config`, scratch state is `putState` / `state`, secrets are `secretGet` / `secretSet` / `secretDelete`, and mail is `mailThreads` / `mailDraft` / `mailSend`. `provider` is `gmail`, `graph`, `outlook`, or `fake`. `outlook` is the same mailbox as `graph`. `mailThreads` takes an optional `{ since, newer_than }` window (`since` is RFC3339, `newer_than` is `30m`, `24h`, or `7d`). The mailbox has to be connected first. `mailDraft` saves a draft and does not send. `mailSend` still requires an approved card. The plugin never sees an OAuth token.
 
 `shutdown` is optional. DAP sends `{"reason":"quit"}` when the person quits. If the handler omits it, `serve` still replies `{ "ok": true }`.
 

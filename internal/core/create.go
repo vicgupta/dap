@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -45,9 +46,9 @@ func (a *App) ScaffoldDraft(req DraftRequest) (DraftResult, error) {
 	if kind == "" {
 		kind = suggested
 	}
-	name := strings.TrimSpace(req.Name)
-	if name == "" {
-		name = slug(req.Description)
+	name, provisional, err := choosePluginName(req.Name, req.Description)
+	if err != nil {
+		return DraftResult{}, err
 	}
 	dir := filepath.Join(a.DataDir, "drafts", name)
 	path, err := pluginauthor.Scaffold(pluginauthor.Options{
@@ -59,6 +60,13 @@ func (a *App) ScaffoldDraft(req DraftRequest) (DraftResult, error) {
 		Dir:         dir,
 	})
 	if err != nil {
+		return DraftResult{}, err
+	}
+	files, err := hashTree(path)
+	if err != nil {
+		return DraftResult{}, err
+	}
+	if err := a.writeDraftMeta(draftMeta{Name: name, Provisional: provisional, Files: files}); err != nil {
 		return DraftResult{}, err
 	}
 	return DraftResult{OK: true, Path: path, Name: name, Type: kind, Suggested: suggested}, nil
@@ -76,11 +84,13 @@ type agentJob struct {
 
 // AgentRun is the polled view of one agent process.
 type AgentRun struct {
-	OK     bool   `json:"ok"`
-	ID     string `json:"id"`
-	Status string `json:"status"`
-	Log    string `json:"log"`
-	Error  string `json:"error,omitempty"`
+	OK      bool   `json:"ok"`
+	ID      string `json:"id"`
+	Status  string `json:"status"`
+	Log     string `json:"log"`
+	Error   string `json:"error,omitempty"`
+	Changed *bool  `json:"changed,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 func (a *App) jobs() *sync.Map {
@@ -122,7 +132,11 @@ func (a *App) StartAgent(req AgentStart) (AgentRun, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	job := &agentJob{ID: id.New("run"), Path: abs, Status: "running", cancel: cancel, done: make(chan struct{})}
 	a.jobs().Store(job.ID, job)
-	prompt := agentrun.Prompt(req.Description, req.Fix)
+	prompt := agentrun.Prompt(agentrun.PromptInput{
+		Description: req.Description,
+		FixReport:   req.Fix,
+		DirName:     filepath.Base(abs),
+	})
 	go func() {
 		defer close(job.done)
 		err := agentrun.Run(ctx, agentrun.Request{
@@ -163,8 +177,22 @@ func (a *App) AgentRun(id string) (AgentRun, error) {
 	}
 	job := v.(*agentJob)
 	a.mu.Lock()
-	defer a.mu.Unlock()
-	return AgentRun{OK: true, ID: job.ID, Status: job.Status, Log: job.Log, Error: job.Err}, nil
+	out := AgentRun{OK: true, ID: job.ID, Status: job.Status, Log: job.Log, Error: job.Err}
+	path := job.Path
+	a.mu.Unlock()
+	switch out.Status {
+	case "finished":
+		changed, msg := a.draftChanged(path)
+		out.Changed = &changed
+		if !changed {
+			out.Message = msg
+		}
+	case "failed":
+		out.Message = "The coding agent stopped with an error, so DAP did not propose an install."
+	case "cancelled":
+		out.Message = "Cancelled. Nothing was proposed."
+	}
+	return out, nil
 }
 
 // CancelAgent stops a running agent.
@@ -208,6 +236,16 @@ func (a *App) ProposePluginChange(dir, plugin string) (model.Card, error) {
 	abs, err := a.resolveCreateDir(dir, plugin)
 	if err != nil {
 		return model.Card{}, err
+	}
+	if a.isDraft(abs) {
+		changed, msg := a.draftChanged(abs)
+		if !changed {
+			return model.Card{}, errors.New(msg)
+		}
+		abs, err = a.relocateDraft(abs)
+		if err != nil {
+			return model.Card{}, err
+		}
 	}
 	rep := pluginauthor.Validate(abs)
 	if !rep.OK {
@@ -277,7 +315,7 @@ func pluginChangeBody(m manifest.Manifest) string {
 	} else {
 		b.WriteString("Permissions:\n")
 		for _, p := range m.Permissions {
-			fmt.Fprintf(&b, "- %s\n", permissions.Plain(p))
+			fmt.Fprintf(&b, "- %s: %s\n", p.Name, permissions.Plain(p))
 		}
 	}
 	b.WriteString("\nApproving installs or reloads this plugin. Nothing runs until you approve.")
@@ -384,32 +422,4 @@ func (a *App) reloadPlugin(dir string) error {
 	defer a.mutex(m.Name).Unlock()
 	a.host.Stop(m.Name)
 	return a.startOne(m.Name)
-}
-
-func slug(s string) string {
-	s = strings.ToLower(s)
-	var b strings.Builder
-	dash := false
-	for _, r := range s {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			b.WriteRune(r)
-			dash = false
-			continue
-		}
-		if !dash && b.Len() > 0 {
-			b.WriteByte('-')
-			dash = true
-		}
-	}
-	out := strings.Trim(b.String(), "-")
-	if len(out) > 40 {
-		out = strings.Trim(out[:40], "-")
-	}
-	if out == "" {
-		return "my-plugin"
-	}
-	if out[0] < 'a' || out[0] > 'z' {
-		out = "p-" + out
-	}
-	return out
 }

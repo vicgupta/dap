@@ -132,10 +132,15 @@ func (a *App) MailDraft(ctx context.Context, plugin string, req mail.SendRequest
 // MailThreads lists a mailbox for a plugin that declared mail.read.
 // Allowed reads are not written to the ledger; the UI polls this often.
 func (a *App) MailThreads(ctx context.Context, plugin, provider string) ([]mail.Thread, error) {
+	return a.MailThreadsQuery(ctx, plugin, provider, mail.ListOptions{})
+}
+
+// MailThreadsQuery is MailThreads with an optional since or newer_than window.
+func (a *App) MailThreadsQuery(ctx context.Context, plugin, provider string, opt mail.ListOptions) ([]mail.Thread, error) {
 	if err := a.gate(plugin, "mail.read", nil, "", false); err != nil {
 		return nil, err
 	}
-	return a.mail.Threads(ctx, provider)
+	return a.mail.ThreadsQuery(ctx, provider, opt)
 }
 
 // MailSend sends one message. The plugin must declare mail.send and hold an approved card that covers sends.

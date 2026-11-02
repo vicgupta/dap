@@ -75,7 +75,7 @@ func (b *Broker) connectComposio(ctx context.Context, provider string) error {
 	return err
 }
 
-func (b *Broker) composioThreads(ctx context.Context, provider string) ([]Thread, error) {
+func (b *Broker) composioThreads(ctx context.Context, provider string, opt ListOptions) ([]Thread, error) {
 	provider = canonProvider(provider)
 	reg, err := b.connect.Registry()
 	if err != nil {
@@ -93,18 +93,18 @@ func (b *Broker) composioThreads(ctx context.Context, provider string) ([]Thread
 	switch provider {
 	case "gmail":
 		raw, err := b.connect.Execute(ctx, provider, "GMAIL_FETCH_EMAILS", map[string]any{
-			"query": "newer_than:30d", "max_results": 40, "verbose": false, "user_id": "me",
+			"query": gmailSearch(opt, b.clock()), "max_results": 40, "verbose": false, "user_id": "me",
 		})
 		if err != nil {
 			return nil, err
 		}
 		msgs = composio.Messages(raw, me, false)
 	case "outlook":
-		inbox, err := b.connect.Execute(ctx, provider, "OUTLOOK_LIST_MESSAGES", outlookListArgs("inbox"))
+		inbox, err := b.connect.Execute(ctx, provider, "OUTLOOK_LIST_MESSAGES", outlookListArgs("inbox", opt, b.clock()))
 		if err != nil {
 			return nil, err
 		}
-		sent, err := b.connect.Execute(ctx, provider, "OUTLOOK_LIST_MESSAGES", outlookListArgs("sentitems"))
+		sent, err := b.connect.Execute(ctx, provider, "OUTLOOK_LIST_MESSAGES", outlookListArgs("sentitems", opt, b.clock()))
 		if err != nil {
 			return nil, err
 		}
@@ -115,7 +115,7 @@ func (b *Broker) composioThreads(ctx context.Context, provider string) ([]Thread
 			return nil, errors.New(tk.Label + " has no threads action")
 		}
 		raw, err := b.connect.Execute(ctx, provider, tool, map[string]any{
-			"user_id": "me", "max_results": 40, "query": "newer_than:30d",
+			"user_id": "me", "max_results": 40, "query": gmailSearch(opt, b.clock()),
 		})
 		if err != nil {
 			return nil, err
@@ -125,13 +125,17 @@ func (b *Broker) composioThreads(ctx context.Context, provider string) ([]Thread
 	return toThreads(provider, composio.Latest(msgs)), nil
 }
 
-func outlookListArgs(folder string) map[string]any {
-	return map[string]any{
+func outlookListArgs(folder string, opt ListOptions, now time.Time) map[string]any {
+	args := map[string]any{
 		"folder":  folder,
 		"top":     30,
 		"user_id": "me",
 		"select":  []string{"id", "subject", "from", "toRecipients", "receivedDateTime", "bodyPreview", "conversationId"},
 	}
+	if filter := outlookFilter(opt, now); filter != "" {
+		args["filter"] = filter
+	}
+	return args
 }
 
 func toThreads(provider string, msgs []composio.Message) []Thread {

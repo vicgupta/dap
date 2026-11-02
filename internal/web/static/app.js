@@ -24,7 +24,7 @@ const state = {
   connNote: {},
   openDetails: {},
   data: {},
-  create: { description: "", name: "", type: "", lang: "ts", ui: false, agent: "", phase: "form", log: "", report: null, path: "", edit: "" },
+  create: { description: "", name: "", type: "", lang: "ts", ui: false, agent: "", phase: "form", log: "", report: null, path: "", edit: "", message: "", card: null },
   quitConfirm: null,
   quitPending: false,
   quitting: false,
@@ -781,21 +781,60 @@ function createView() {
   if (c.phase === "run" || c.phase === "done") {
     const checks = (c.report && c.report.checks || []).map((row) =>
       `<li class="${row.ok ? "pass" : "fail"}"><strong>${esc(row.name)}</strong> ${esc(row.detail || "")}</li>`).join("");
-    const failed = c.report && c.report.ok === false;
-    const passed = c.report && c.report.ok === true;
+    const passed = c.status === "passed";
+    const needsFix = c.status === "needs a fix";
+    const running = c.status === "running";
+    const checking = c.status === "checking";
+    const failed = c.phase === "done" && !passed && !needsFix && !checking;
+    const name = c.name || edit || "Plugin";
+    let headline = "Writing " + name;
+    let lead = "Your coding agent is working in the draft folder. The log updates as it goes. Nothing is installed until you approve a change card.";
+    if (checking) {
+      headline = "Checking " + name;
+      lead = "Validation is running. Nothing is installed yet.";
+    } else if (passed) {
+      headline = "Ready to review";
+      lead = name + " passed validation. A change card is in the inbox. The plugin is not installed until you approve it.";
+    } else if (needsFix) {
+      headline = "Needs a fix";
+      lead = c.message || "Validation did not pass, so DAP did not propose an install.";
+    } else if (c.status === "cancelled") {
+      headline = "Cancelled";
+      lead = c.message || "Cancelled. Nothing was proposed.";
+    } else if (failed) {
+      headline = "Nothing was proposed";
+      lead = c.message || "The agent did not finish a plugin, so DAP did not propose an install.";
+    }
+    const bannerClass = passed ? "banner ok" : "banner";
+    const banner = (passed || needsFix || failed)
+      ? `<div class="${bannerClass}" role="${passed ? "status" : "alert"}">${esc(lead)}</div>`
+      : `<p class="create-lead">${esc(lead)}</p>`;
+    const tailCount = (running || checking) ? 200 : 40;
+    const full = c.log || "";
+    const tail = window.DAPCreate ? window.DAPCreate.logTail(full, tailCount) : full;
+    const rawLines = String(full).split("\n");
+    if (rawLines.length && rawLines[rawLines.length - 1] === "") rawLines.pop();
+    const trimmed = rawLines.length > tailCount;
+    const cardBlock = passed && c.card
+      ? `<h2 class="section-title">Change card</h2><p class="create-lead">${esc(c.card.title || "")}</p><pre class="create-log">${esc(c.card.body || "")}</pre>`
+      : "";
     return shell(`
-      <header class="page-head"><div><h1>${edit ? "Edit with agent" : "Create plugin"}</h1><p>${esc(c.name || edit || "Plugin")}</p></div></header>
+      <header class="page-head"><div><h1>${edit ? "Edit with agent" : "Create plugin"}</h1><p>${esc(name)}</p></div></header>
       <section class="card plugin-block">
-        <p class="sub">${esc(c.status || "Working")}</p>
-        <pre class="create-log" aria-live="polite">${esc(c.log || "Starting…")}</pre>
+        <p class="create-status">${esc(headline)}</p>
+        ${banner}
+        <p class="create-log-label">Agent log</p>
+        ${trimmed ? `<p class="sub">Showing the last part of the agent log.</p>` : ""}
+        <pre class="create-log" aria-live="polite">${esc(tail || (running ? "Starting…" : "No output."))}</pre>
         <div class="actions" style="margin-top:12px">
-          ${c.status === "running" ? `<button class="ghost" data-act="create-cancel">Cancel</button>` : ""}
-          ${failed ? `<button class="primary" data-act="create-fix">Ask the agent to fix</button>` : ""}
+          ${running ? `<button class="ghost" data-act="create-cancel">Cancel</button>` : ""}
+          ${failed ? `<button class="primary" data-act="create-retry">Retry</button>` : ""}
+          ${needsFix ? `<button class="primary" data-act="create-fix">Ask the agent to fix</button>` : ""}
           ${passed ? `<a class="ghost" href="#/inbox">Review the change card</a>` : ""}
           <button class="quiet" data-act="create-reset">Start over</button>
         </div>
         ${checks ? `<h2 class="section-title">Validation</h2><ul class="checks">${checks}</ul>` : ""}
-        ${passed ? `<p class="sub">Validation passed. A change card is in the decision inbox. The plugin is not installed until you approve it.</p>` : ""}
+        ${cardBlock}
       </section>
     `);
   }
@@ -1320,6 +1359,8 @@ function render() {
   }
   const nextThread = document.getElementById("chat-thread");
   if (nextThread) nextThread.scrollTop = stickThread ? nextThread.scrollHeight : threadTop;
+  const createLog = root.querySelector(".create-log");
+  if (createLog) createLog.scrollTop = createLog.scrollHeight;
   if (state.chat.focusComposer) {
     state.chat.focusComposer = false;
     const box = root.querySelector(".chat-input");
@@ -1410,7 +1451,7 @@ document.addEventListener("click", (ev) => {
     return;
   }
   if (actName === "edit-agent") {
-    state.create = { description: "", name: el.dataset.name, type: "", lang: "ts", ui: false, agent: "", phase: "form", log: "", report: null, path: "", edit: el.dataset.name };
+    state.create = { description: "", name: el.dataset.name, type: "", lang: "ts", ui: false, agent: "", phase: "form", log: "", report: null, path: "", edit: el.dataset.name, message: "", card: null };
     location.hash = "#/create?edit=" + encodeURIComponent(el.dataset.name);
     state.route = "create";
     render();
@@ -1423,9 +1464,13 @@ document.addEventListener("click", (ev) => {
     return;
   }
   if (actName === "create-reset") {
-    state.create = { description: "", name: "", type: "", lang: "ts", ui: false, agent: "", phase: "form", log: "", report: null, path: "", edit: "" };
+    state.create = { description: "", name: "", type: "", lang: "ts", ui: false, agent: "", phase: "form", log: "", report: null, path: "", edit: "", message: "", card: null };
     location.hash = "#/create";
     render();
+    return;
+  }
+  if (actName === "create-retry") {
+    startAgent(state.create.description, "");
     return;
   }
   if (actName === "create-fix") {
@@ -1915,6 +1960,9 @@ async function startAgent(description, fix) {
   state.create.status = "running";
   state.create.log = "";
   state.create.report = null;
+  state.create.message = "";
+  state.create.card = null;
+  state.error = "";
   render();
   const body = {
     path: state.create.path,
@@ -1931,27 +1979,50 @@ async function startAgent(description, fix) {
 
 async function pollCreate() {
   if (state.route !== "create" || state.create.status !== "running" || !state.create.runId) return;
+  const decide = window.DAPCreate || { outcome: () => ({ step: "error", message: "Create logic failed to load.", retry: true }), afterValidation: () => ({ step: "fix", propose: false, message: "Validation did not pass." }), logTail: (s) => s };
   try {
     const run = await api("/api/create/run/" + state.create.runId);
     state.create.log = run.log || state.create.log;
-    state.create.status = run.status;
-    if (run.error) state.create.log += "\n" + run.error;
+    if (run.error && state.create.log.indexOf(run.error) === -1) {
+      state.create.log += (state.create.log ? "\n" : "") + run.error;
+    }
     if (run.status === "running") {
+      state.create.status = "running";
+      render();
+      return;
+    }
+    const decision = decide.outcome(run);
+    if (decision.step !== "check") {
+      state.create.status = run.status === "cancelled" ? "cancelled" : "failed";
+      state.create.phase = "done";
+      state.create.message = decision.message;
       render();
       return;
     }
     state.create.status = "checking";
+    render();
     const rep = await api("/api/create/validate", { method: "POST", body: { path: state.create.path, plugin: state.create.edit || "" } });
     state.create.report = rep;
-    state.create.status = rep.ok ? "passed" : "needs a fix";
-    if (rep.ok) {
-      await api("/api/create/propose", { method: "POST", body: { path: state.create.path, plugin: state.create.edit || "" } });
+    const after = decide.afterValidation(rep);
+    if (!after.propose) {
+      state.create.status = "needs a fix";
+      state.create.phase = "done";
+      state.create.message = after.message;
+      render();
+      return;
     }
+    const proposed = await api("/api/create/propose", { method: "POST", body: { path: state.create.path, plugin: state.create.edit || "" } });
+    state.create.status = "passed";
     state.create.phase = "done";
+    state.create.card = proposed.card || null;
+    if (proposed.path) state.create.path = proposed.path;
+    if (proposed.card && proposed.card.plugin) state.create.name = proposed.card.plugin;
+    state.create.message = "";
     render();
   } catch (err) {
-    state.error = err.message;
     state.create.status = "failed";
+    state.create.phase = "done";
+    state.create.message = err.message || "Something went wrong. Nothing was proposed.";
     render();
   }
 }

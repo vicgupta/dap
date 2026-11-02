@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	netmail "net/mail"
+	"net/url"
 	"strings"
 	"time"
 
@@ -54,7 +55,15 @@ func (c *Client) Profile(ctx context.Context, token string) (string, error) {
 
 // ListThreads returns recent inbox and sent conversations.
 func (c *Client) ListThreads(ctx context.Context, token, me string) ([]mailbox.Thread, error) {
-	ids, err := c.threadIDs(ctx, token)
+	return c.ListThreadsQuery(ctx, token, me, "newer_than:30d")
+}
+
+// ListThreadsQuery lists conversations matching a Gmail search query.
+func (c *Client) ListThreadsQuery(ctx context.Context, token, me, query string) ([]mailbox.Thread, error) {
+	if strings.TrimSpace(query) == "" {
+		query = "newer_than:30d"
+	}
+	ids, err := c.threadIDs(ctx, token, query)
 	if err != nil {
 		return nil, err
 	}
@@ -71,13 +80,16 @@ func (c *Client) ListThreads(ctx context.Context, token, me string) ([]mailbox.T
 	return out, nil
 }
 
-func (c *Client) threadIDs(ctx context.Context, token string) ([]string, error) {
+func (c *Client) threadIDs(ctx context.Context, token, query string) ([]string, error) {
 	var out struct {
 		Threads []struct {
 			ID string `json:"id"`
 		} `json:"threads"`
 	}
-	path := "/gmail/v1/users/me/threads?maxResults=40&q=" + "newer_than:30d"
+	q := url.Values{}
+	q.Set("maxResults", "40")
+	q.Set("q", query)
+	path := "/gmail/v1/users/me/threads?" + q.Encode()
 	if err := c.get(ctx, token, path, &out); err != nil {
 		return nil, err
 	}
