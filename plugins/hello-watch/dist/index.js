@@ -52,5 +52,8 @@ const plugin = {
             ],
         };
     },
+    async shutdown() {
+        return { ok: true };
+    },
 };
 serve(plugin);

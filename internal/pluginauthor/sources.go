@@ -17,7 +17,7 @@ You are editing the plugin in this directory (` + name + `, type ` + kind + `, l
 ## Rules
 
 - Speak JSON-RPC 2.0, one JSON object per line, on stdout. Logs go to stderr. Never print a prompt, a log line, or a stack trace on stdout.
-- Implement initialize, watch, propose, act, and report. Unknown methods return a JSON-RPC error.
+- Implement initialize, watch, propose, act, report, and shutdown. shutdown receives {"reason":"quit"} and returns {"ok": true}. Unknown methods return a JSON-RPC error.
 - Declare the smallest permission list that does the job. Modes are only allowed or ask_first. An undeclared permission is denied.
 - Anything that sends, spends, or deletes must be a decision card with that effect. Do not perform it in watch or propose. act runs only after the person approves.
 - A change to this plugin's own config or schedule is a change card (kind change). Do not write it yourself.
@@ -48,6 +48,9 @@ act result: {"status": "done", "summary": "..."}
 
 report result: {"metrics": [{"key": "runs", "label": "Runs", "value": 1}]}
 
+shutdown params: {"reason": "quit"}
+shutdown result: {"ok": true}
+
 Effects may only be sends, spends, or deletes. kind is action or change.
 `
 }
@@ -77,6 +80,9 @@ def act(params, api):
 def report(params, api):
     return {"metrics": [{"key": "runs", "label": "Runs", "value": 1}]}
 
+def shutdown(params, api):
+    return {"ok": True}
+
 if __name__ == "__main__":
     dap_plugin.serve({
         "initialize": initialize,
@@ -84,6 +90,7 @@ if __name__ == "__main__":
         "propose": propose,
         "act": act,
         "report": report,
+        "shutdown": shutdown,
     })
 `
 }
@@ -181,6 +188,9 @@ const plugin: PluginHandler = {
   },
   async report() {
     return { metrics: [{ key: "runs", label: "Runs", value: 1 }] };
+  },
+  async shutdown() {
+    return { ok: true };
   },
 };
 
@@ -357,18 +367,21 @@ func TestHandleInitialize(t *testing.T) {
 
 func uiHTML(name string) string {
 	return `<!DOCTYPE html>
-<html lang="en" data-theme="system">
+<html lang="en" data-theme="system" data-density="comfortable">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>` + name + `</title>
-  <script src="theme-boot.js"></script>
+  <script src="/theme-boot.js"></script>
   <!--DAP_BOOT-->
-  <link rel="stylesheet" href="app.css" />
+  <script src="/layout-boot.js"></script>
+  <link rel="stylesheet" href="/theme.css" />
+  <link rel="stylesheet" href="/layout.css" />
+  <link rel="stylesheet" href="/app.css" />
 </head>
 <body>
   <main id="app"></main>
-  <script src="app.js"></script>
+  <script src="/app.js"></script>
 </body>
 </html>
 `
@@ -397,30 +410,12 @@ if (token) {
 }
 
 func uiCSS() string {
-	return `:root, html[data-theme="light"] {
-  color-scheme: light;
-  --bg: #f4f5f7; --ink: #1b1c21; --muted: #4b5160; --surface: #fff; --line: #e6e7ee;
-}
-html[data-theme="dark"] { color-scheme: dark; --bg: #101218; --ink: #f2f4f8; --muted: #c5cbd8; --surface: #1a1d27; --line: #2c3142; }
-@media (prefers-color-scheme: dark) {
-  html[data-theme="system"] { color-scheme: dark; --bg: #101218; --ink: #f2f4f8; --muted: #c5cbd8; --surface: #1a1d27; --line: #2c3142; }
-}
-body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 Inter, ui-sans-serif, system-ui, sans-serif; }
+	return `* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--font, Inter, ui-sans-serif, system-ui, sans-serif); }
 main { max-width: 640px; margin: 0 auto; padding: 32px 20px; }
+html[data-density="compact"] main { padding: 16px 16px 40px; }
 h1 { font-size: 22px; margin: 0; }
+html[data-density="compact"] h1 { font-size: 18px; }
 .sub { color: var(--muted); }
-`
-}
-
-func themeBoot() string {
-	return `(function () {
-  var allowed = { system: 1, light: 1, dark: 1 };
-  var q = "";
-  try { q = new URLSearchParams(location.search).get("theme") || ""; } catch (e) {}
-  if (!allowed[q]) q = "";
-  var theme = q || document.documentElement.getAttribute("data-theme") || "system";
-  if (!allowed[theme]) theme = "system";
-  document.documentElement.setAttribute("data-theme", theme);
-})();
 `
 }

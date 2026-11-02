@@ -109,12 +109,21 @@ export interface ReportResult {
   metrics: Metric[];
 }
 
+export interface ShutdownParams {
+  reason?: string;
+}
+
+export interface ShutdownResult {
+  ok: boolean;
+}
+
 export interface PluginHandler {
   initialize(params: InitParams): InitResult | Promise<InitResult>;
   watch(params: WatchParams): WatchResult | Promise<WatchResult>;
   propose(params: ProposeParams): ProposeResult | Promise<ProposeResult>;
   act(params: ActParams): ActResult | Promise<ActResult>;
   report(params: ReportParams): ReportResult | Promise<ReportResult>;
+  shutdown?(params: ShutdownParams): ShutdownResult | Promise<ShutdownResult>;
 }
 
 export interface CheckRequest {

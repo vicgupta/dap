@@ -41,6 +41,8 @@ type PluginSummary struct {
 	Schedule      string         `json:"schedule"`
 	Missed        *Missed        `json:"missed,omitempty"`
 	Tile          model.Tile     `json:"tile"`
+	TileSize      string         `json:"tile_size,omitempty"`
+	TileMin       string         `json:"tile_min,omitempty"`
 	Metrics       []model.Metric `json:"metrics,omitempty"`
 	UIURL         string         `json:"ui_url,omitempty"`
 	UITitle       string         `json:"ui_title,omitempty"`
@@ -122,6 +124,8 @@ func (a *App) pluginSummaries(withPerms bool) []PluginSummary {
 			LastStatus:    rec.Run.LastStatus,
 			Schedule:      rec.Schedule.Label(),
 			Tile:          rec.Tile,
+			TileSize:      tileSizeOf(rec.Manifest),
+			TileMin:       tileMinOf(rec.Manifest),
 			Metrics:       rec.Metrics,
 			UIURL:         rt.UIURL,
 			NeedsApproval: rt.NeedsApproval,
@@ -165,6 +169,20 @@ func (a *App) pluginSummaries(withPerms bool) []PluginSummary {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
+}
+
+func tileSizeOf(m manifest.Manifest) string {
+	if m.Tile != nil && m.Tile.Size != "" {
+		return m.Tile.Size
+	}
+	return "medium"
+}
+
+func tileMinOf(m manifest.Manifest) string {
+	if m.Tile != nil && m.Tile.Min != "" {
+		return m.Tile.Min
+	}
+	return "small"
 }
 
 func (a *App) PluginUI(name string) (root string, ok bool) {

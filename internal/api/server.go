@@ -7,28 +7,34 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"io/fs"
 	"net"
 	"net/http"
+	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/vicgupta/dap/internal/core"
 	"github.com/vicgupta/dap/internal/guardrails"
+	"github.com/vicgupta/dap/internal/layout"
 	"github.com/vicgupta/dap/internal/model"
+	"github.com/vicgupta/dap/internal/theme"
 	"github.com/vicgupta/dap/internal/web"
 )
 
 // Server is the human-facing localhost site.
 type Server struct {
-	App   *core.App
-	Addr  string
-	ln    net.Listener
-	srv   *http.Server
-	mu    sync.Mutex
-	boxes map[string]*sandbox
+	App    *core.App
+	Addr   string
+	ln     net.Listener
+	srv    *http.Server
+	mu     sync.Mutex
+	boxes  map[string]*sandbox
+	onQuit func()
 }
 
 // New builds a server. Call Start to listen. The listener is forced onto loopback.
@@ -65,6 +71,10 @@ func (s *Server) Start() error {
 	return nil
 }
 
+// OnQuit is called after POST /api/quit has written its response.
+// da serve uses it for the same shutdown path as SIGINT and SIGTERM.
+func (s *Server) OnQuit(fn func()) { s.onQuit = fn }
+
 // URL is the base URL of the human interface.
 func (s *Server) URL() string {
 	host := s.Addr
@@ -97,10 +107,17 @@ func (s *Server) Handler() http.Handler {
 	static, _ := fs.Sub(web.Static, "static")
 	fonts, _ := fs.Sub(static, "fonts")
 	mux.Handle("GET /fonts/", http.StripPrefix("/fonts/", http.FileServer(http.FS(fonts))))
+	mux.HandleFunc("GET /theme.css", file(static, "theme.css"))
+	mux.HandleFunc("GET /theme-boot.js", file(static, "theme-boot.js"))
+	mux.HandleFunc("GET /layout.css", file(static, "layout.css"))
+	mux.HandleFunc("GET /layout-boot.js", file(static, "layout-boot.js"))
+	mux.HandleFunc("GET /layout-logic.js", file(static, "layout-logic.js"))
 	mux.HandleFunc("GET /app.css", file(static, "app.css"))
 	mux.HandleFunc("GET /app.js", file(static, "app.js"))
 	mux.HandleFunc("GET /favicon.svg", file(static, "favicon.svg"))
 	mux.HandleFunc("GET /{$}", s.index)
+	mux.HandleFunc("GET /api/settings", s.auth(s.getSettings))
+	mux.HandleFunc("PUT /api/settings", s.auth(s.putSettings))
 	mux.HandleFunc("GET /api/home", s.auth(s.home))
 	mux.HandleFunc("GET /api/inbox", s.auth(s.inbox))
 	mux.HandleFunc("POST /api/inbox/{id}/approve", s.auth(s.approve))
@@ -133,6 +150,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/log", s.auth(s.log))
 	mux.HandleFunc("POST /api/outcome", s.auth(s.outcome))
 	mux.HandleFunc("POST /api/tile", s.auth(s.tile))
+	mux.HandleFunc("GET /api/quit-status", s.auth(s.quitStatus))
+	mux.HandleFunc("POST /api/quit", s.auth(s.quit))
 	mux.HandleFunc("GET /plugins/{name}/", s.pluginRedirect)
 	mux.HandleFunc("GET /plugins/{name}", s.pluginRedirect)
 	return mux
@@ -144,13 +163,62 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing ui", http.StatusInternalServerError)
 		return
 	}
+	mode := s.App.Theme()
+	prefs := s.App.Layout()
+	raw, _ := json.Marshal(prefs)
 	boot := `<meta name="dap-token" content="` + s.App.AdminToken() + `" />` +
-		`<meta name="dap-version" content="0.1.0" />`
-	html := bytes.Replace(b, []byte("<!--DAP_BOOT-->"), []byte(boot), 1)
+		`<meta name="dap-version" content="0.1.0" />` +
+		`<meta name="dap-theme" content="` + mode + `" />` +
+		`<meta name="dap-density" content="` + prefs.PluginDensity() + `" />` +
+		`<meta name="dap-layout" content="` + html.EscapeString(string(raw)) + `" />`
+	page := injectRoot(bytes.Replace(b, []byte("<!--DAP_BOOT-->"), []byte(boot), 1), map[string]string{
+		"data-theme":      mode,
+		"data-density":    prefs.PluginDensity(),
+		"data-home-view":  prefs.Home.View,
+		"data-inbox-view": prefs.Inbox.View,
+	})
 	secure(w, s.URL())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write(html)
+	_, _ = w.Write(page)
+}
+
+func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":     true,
+		"theme":  s.App.Theme(),
+		"layout": s.App.Layout(),
+	})
+}
+
+func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Theme  *string          `json:"theme"`
+		Layout *layout.Settings `json:"layout"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	mode := s.App.Theme()
+	if body.Theme != nil {
+		next, err := s.App.SetTheme(*body.Theme)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		mode = next
+	}
+	prefs := s.App.Layout()
+	if body.Layout != nil {
+		next, err := s.App.SetLayout(*body.Layout)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		prefs = next
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "theme": mode, "layout": prefs})
 }
 
 func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
@@ -560,6 +628,41 @@ func (s *Server) outcome(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "card": card})
 }
 
+func (s *Server) quitStatus(w http.ResponseWriter, r *http.Request) {
+	st := s.App.QuitStatus()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":               true,
+		"running":          st.Running,
+		"plugins_running":  st.PluginsRunning,
+		"inflight_actions": st.InflightActions,
+		"acting":           st.Acting,
+	})
+}
+
+func (s *Server) quit(w http.ResponseWriter, r *http.Request) {
+	if !loopbackPeer(r) {
+		writeJSON(w, http.StatusForbidden, map[string]any{"ok": false, "error": "quit is only available on this machine"})
+		return
+	}
+	if !quitCSRF(r) {
+		writeJSON(w, http.StatusForbidden, map[string]any{"ok": false, "error": "quit must be a same-origin POST"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	fn := s.onQuit
+	if fn == nil {
+		return
+	}
+	go func() {
+		// Let the response leave before serve starts closing listeners.
+		time.Sleep(150 * time.Millisecond)
+		fn()
+	}()
+}
+
 func (s *Server) tile(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Plugin string `json:"plugin"`
@@ -585,7 +688,81 @@ func (s *Server) pluginRedirect(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "this plugin has no web UI", http.StatusNotFound)
 		return
 	}
-	http.Redirect(w, r, box.url, http.StatusFound)
+	target := withQuery(box.url, "theme", chosenTheme(r, s.App.Theme()))
+	target = withQuery(target, "density", layout.ChosenDensity(r.URL.Query().Get("density"), s.App.Layout().PluginDensity()))
+	http.Redirect(w, r, target, http.StatusFound)
+}
+
+// injectTheme sets data-theme on the root element before the browser paints.
+func injectTheme(doc []byte, mode string) []byte {
+	mode = theme.Stored(mode)
+	attr := []byte(`<html lang="en" data-theme="` + mode + `">`)
+	if bytes.Contains(doc, []byte(`<html lang="en" data-theme="`)) {
+		start := bytes.Index(doc, []byte(`<html lang="en" data-theme="`))
+		end := bytes.Index(doc[start:], []byte(">"))
+		if end > 0 {
+			return append(append([]byte{}, doc[:start]...), append(attr, doc[start+end+1:]...)...)
+		}
+	}
+	return bytes.Replace(doc, []byte("<html lang=\"en\">"), attr, 1)
+}
+
+func chosenTheme(r *http.Request, fallback string) string {
+	q := strings.TrimSpace(r.URL.Query().Get("theme"))
+	if q == "" {
+		return theme.Stored(fallback)
+	}
+	mode, err := theme.Normalize(q)
+	if err != nil {
+		return theme.Stored(fallback)
+	}
+	return mode
+}
+
+func withThemeQuery(raw, mode string) string {
+	return withQuery(raw, "theme", theme.Stored(mode))
+}
+
+func withQuery(raw, key, value string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	q := u.Query()
+	q.Set(key, value)
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+func injectRoot(doc []byte, attrs map[string]string) []byte {
+	start := bytes.Index(doc, []byte("<html"))
+	if start < 0 {
+		return doc
+	}
+	rel := bytes.IndexByte(doc[start:], '>')
+	if rel < 0 {
+		return doc
+	}
+	end := start + rel
+	keys := make([]string, 0, len(attrs))
+	for k := range attrs {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	b.WriteString(`<html lang="en"`)
+	for _, k := range keys {
+		b.WriteByte(' ')
+		b.WriteString(k)
+		b.WriteString(`="`)
+		b.WriteString(html.EscapeString(attrs[k]))
+		b.WriteString(`"`)
+	}
+	b.WriteByte('>')
+	out := append([]byte{}, doc[:start]...)
+	out = append(out, b.String()...)
+	out = append(out, doc[end+1:]...)
+	return out
 }
 
 func file(static fs.FS, name string) http.HandlerFunc {
@@ -617,6 +794,49 @@ func secure(w http.ResponseWriter, origin string) {
 		csp += "; frame-src http://127.0.0.1:* http://localhost:*"
 	}
 	w.Header().Set("Content-Security-Policy", csp)
+}
+
+func loopbackPeer(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	return loopbackHost(host)
+}
+
+func loopbackHost(host string) bool {
+	host = strings.Trim(host, "[]")
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func loopbackOrigin(origin string) bool {
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return false
+	}
+	return loopbackHost(u.Hostname())
+}
+
+// quitCSRF rejects cross-site form posts. The admin token is a bearer header,
+// and browsers will not attach a custom header on a simple cross-site POST.
+func quitCSRF(r *http.Request) bool {
+	if r.Header.Get("X-DAP-Request") != "quit" {
+		return false
+	}
+	if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+		return false
+	}
+	if origin := r.Header.Get("Origin"); origin != "" && !loopbackOrigin(origin) {
+		return false
+	}
+	return true
 }
 
 func tokenOK(r *http.Request, token string) bool {

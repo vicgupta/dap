@@ -14,3 +14,5 @@ provides:
   - hellos
 schedule:
   every: 15m
+tile:
+  size: small

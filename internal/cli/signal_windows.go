@@ -7,9 +7,12 @@ import (
 	"os/signal"
 )
 
-func waitForStop() {
+func waitForStop(extra <-chan struct{}) {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, os.Interrupt)
-	<-ch
+	select {
+	case <-ch:
+	case <-extra:
+	}
 	signal.Stop(ch)
 }

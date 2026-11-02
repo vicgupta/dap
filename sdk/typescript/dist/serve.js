@@ -54,6 +54,11 @@ export function serve(handler) {
                 case "report":
                     result = await handler.report(params);
                     break;
+                case "shutdown":
+                    result = handler.shutdown
+                        ? await handler.shutdown(params)
+                        : { ok: true };
+                    break;
                 default:
                     throw new Error("unknown method " + String(req.method));
             }

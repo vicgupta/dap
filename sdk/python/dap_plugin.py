@@ -98,6 +98,9 @@ def serve(handler):
             if method == "initialize":
                 host["api"] = Host(params)
                 result = handler["initialize"](params, host["api"])
+            elif method == "shutdown":
+                fn = handler.get("shutdown")
+                result = fn(params, host["api"]) if fn else {"ok": True}
             elif method in ("watch", "propose", "act", "report"):
                 result = handler[method](params, host["api"])
             else:

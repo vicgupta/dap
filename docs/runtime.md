@@ -38,9 +38,26 @@ One queue for every plugin. Cards are stored in `state.json`.
 | `failed` | `act` or applying a change failed |
 | `blocked` | Approval-time guardrail said `never` |
 
-The inbox screen lists `pending`, then `snoozed`.
+The inbox screen lists `pending`, then `snoozed`, unless you have reordered or pinned cards.
 
-Keyboard, when the inbox is open and focus is not in a field:
+## Card layouts
+
+Home and the decision inbox each have their own layout. The switcher sits in the page header: icon buttons, a radiogroup, arrow keys to move, Enter is not required because moving selects. A second group sets density.
+
+| View | Home | Inbox |
+| --- | --- | --- |
+| Grid | Default. Small tiles span a third of the row, medium half, large the whole row. | Two cards across. |
+| List | One column. | Default. One card under the next. |
+| Board | Columns are Needs you, Attention, Down, and Healthy. Empty columns are hidden. | One column per plugin. |
+| Split | — | List of titles plus Approve and Reject, with the open card beside them. Narrow windows show one pane at a time. |
+
+Comfortable is the default density. Compact tightens padding and type. Approve, Edit, Reject, and Snooze stay labeled in every layout, including a collapsed card. Collapse hides the body. Pin keeps a card at the top of its view. Drag the handle to reorder, or focus the handle and press Up or Down.
+
+The choice is stored per view in `localStorage["dap.layout"]` and in `config.json` under `layout`, through `GET` and `PUT /api/settings`. The browser value wins, then it is written back so the next browser on this machine starts there. `layout-boot.js` applies density and the view before the stylesheet loads, so the first paint matches. Defaults are Home grid and inbox list, both comfortable.
+
+A plugin page follows the Home density. The contract is in [layout.md](layout.md). Tile span comes from `plugin.yaml` (`tile.size`, `tile.min`) until the person changes it on the card. See [plugins.md](plugins.md).
+
+Keyboard, when the inbox is open and focus is not in a field or on a layout control:
 
 | Key | Action |
 | --- | --- |
@@ -102,8 +119,9 @@ Kinds the core writes today:
 | `tile.write` | `da tile write` or `POST /tile` |
 | `outcome` | `da outcome` |
 | `mail.connect`, `mail.disconnect`, `mail.sent`, `mail.undo` | Mailbox connection changes and sends. Allowed mail reads are not logged |
+| `plugin.stop` | Quit asked the plugin to `shutdown`, or stopped it after the drain timeout |
 
-`plugin.stop` exists as a constant and is not written by this version. Stopping a plugin does not append a row.
+`plugin.stop` is written when DAP quits. Removing one plugin with `da plugin remove` still does not append a row.
 
 `da log` with no JSON lists the newest 200 rows. The Activity page asks for the same window.
 
@@ -141,19 +159,36 @@ See [cli.md](cli.md) for the command. The check list is fixed:
 
 Info-level failures do not clear `ok`. Error-level failures do. A plugin that was installed while the server was stopped shows as not running until `da serve` or a doctor run starts it.
 
+## Quitting
+
+Quit in the sidebar, `da quit`, `da stop`, `SIGINT`, and `SIGTERM` share one path:
+
+1. The scheduler stops, so it will not start a new run.
+2. In-flight `act` calls, and any other plugin call still in progress, are given 10 seconds to finish.
+3. Each idle plugin is sent `shutdown` (`{"reason":"quit"}`) and given 3 seconds to answer. A plugin that is still inside a call is stopped without that request.
+4. The process is stopped. A `plugin.stop` row is appended.
+5. The ledger is fsynced and closed. `state.json` is written and fsynced.
+6. `run.json` is removed and `dap.lock` is released.
+7. The HTTP server stops and the process exits 0. The page shows "DAP has quit. You can close this window." and tries to close itself. The chromeless window's browser process is stopped when DAP started it.
+
+The confirm reads "Quit DAP? Scheduled agents stop running until you open DAP again." It is skipped when no plugin is running and nothing is in flight. If an approved action is executing, or a plugin call is in progress, the confirm says so.
+
+`POST /api/quit` needs the admin token, a loopback client, and `X-DAP-Request: quit`. Plugin tokens cannot call it.
+
 ## Data directory
 
 Mode `0700` on the directory. JSON state files are mode `0600`.
 
 | Path | Role |
 | --- | --- |
-| `config.json` | `addr`. Created by `da init`. Default `127.0.0.1:7391`. |
+| `config.json` | `addr`, and `layout` once a view is changed. Created by `da init`. Default address `127.0.0.1:7391`. Other keys in the file are kept. |
 | `state.json` | Installed plugins, config, schedule cursor, tiles, metrics, cards, guardrail rules, plugin scratch state. |
 | `ledger.jsonl` | Append-only activity. |
 | `secrets.json` | File backend only. |
 | `dap.lock` | Exclusive lock held by `da serve` / `da run` and by a one-shot command. |
-| `run.json` | While the server is up: `pid`, `addr`, `token`, `started`. Removed on a clean shutdown. Mode `0600`. |
+| `run.json` | While the server is up: `pid`, `addr`, `token`, `started`. Removed on a clean shutdown, before the lock is released. Mode `0600`. |
 | `plugin-data/<name>/` | The `data_dir` passed to `initialize`. |
+| `browser-profile/` | Private Chrome, Edge, or Chromium profile for the `da run` window. Quit can close that process without closing other browser windows. |
 | `mail/public.json` | Gmail and Outlook public client ids. Not a token. Mode `0600`. |
 | `mail/fake.json` | Demo mailbox threads and connection flag. |
 
@@ -177,21 +212,22 @@ What they cover:
 - JSON-RPC method order and process stop.
 - Both example plugins in one process: concurrent runs, approve then `act`, a second run while a card is pending, a missed run, a change card, a `never` override.
 - Admin HTTP rejects a missing token and serves the UI with the session token.
+- Quit drains an in-flight `act`, calls `shutdown`, releases `dap.lock`, removes `run.json`, and flushes the ledger. A plugin token cannot call `POST /api/quit`.
 - CLI init, install preview, install, list, and `da check` of an undeclared permission.
 - Gmail and Graph clients against mocked HTTP, PKCE sign-in with an incremental send scope, and an approval-gated demo send.
 
 ## Limitations
 
-- The window is a browser, not a native webview. With no Chrome, Edge, or Chromium, Linux and macOS fall back to the system browser. Closing that window does not stop `da`. Ctrl+C does.
+- The window is a browser, not a native webview. With no Chrome, Edge, or Chromium, Linux and macOS fall back to the system browser. Closing that window does not stop `da`. Quit, `da quit`, and Ctrl+C do. The Quit page says DAP has quit and asks the window to close; a chromeless app window is also stopped with the process when DAP launched it.
 - The admin token is in the HTML of the loopback page and in `run.json`. That is the whole of admin authentication.
 - Plugin UI isolation is a separate loopback origin, a bearer token, and Content-Security-Policy. It is not an OS sandbox.
 - macOS keychain writes pass the secret on `security`'s argv. Use `DAP_SECRETS=file` if that matters. Linux `secret-tool` can block on a keyring prompt until the 3 second timeout, and then the file backend is used.
 - Semver in manifests has no pre-release or build metadata.
 - `every` cannot express days. Cron has no seconds field and no descriptors such as `@daily`.
 - The core detects coding agents and does not launch them.
-- There is no `da version` command. The version is the `version` field of `da doctor` and of Home.
+- `da version` prints the core version. A release build also prints `release`, `commit`, and `date`. Home and `da doctor` still report `version`.
 - `da serve` ignores arguments it does not recognize.
 - `da check` exits `0` when the decision is `never` or `ask_first`. Read `ok` and `decision`. The plugin HTTP API uses status 403 for those decisions.
-- `plugin.stop` is not written to the ledger.
+- `plugin.stop` is written when DAP quits, not when a single plugin is removed.
 - Stderr from a plugin is kept in memory for that process and is not a doctor field.
 - One data directory, one server. A second `da serve` on the same directory fails the lock.

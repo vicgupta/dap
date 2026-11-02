@@ -114,9 +114,25 @@ Keys are unique and cannot contain spaces. Types:
 
 Unknown keys in a stored config or a change card are rejected. Defaults are copied at install. `required: true` without a default fails install when the value is missing.
 
+### Tile size
+
+Optional. This is the Home dashboard tile, not the plugin's own page.
+
+```yaml
+tile:
+  size: medium    # small | medium | large. Default medium.
+  min: small      # smallest size the Home control may use. Default small.
+```
+
+`size` is the span until the person picks another. `min` is a floor: a plugin that needs room can set `min: medium` and Home will not offer small. `size` cannot be smaller than `min`. On the grid, small is one third of the row, medium is half, and large is the full row. List and board keep the card readable; the span applies when Home is in the grid.
+
+`hello-watch` asks for small. `workflow` stays medium. `inbox-followups` asks for large and will not go below medium.
+
 ### UI
 
 `entry` is a file inside the plugin directory. `..` is rejected. `route` must start with `/plugins/`. It defaults to `/plugins/<name>/`. `title` defaults to the plugin name. The core serves the entry file's directory on a private loopback port. See [architecture.md](architecture.md).
+
+Plugin pages do not share the core origin, so they cannot read the core page's `localStorage`. DAP passes the Home density the same way it passes theme. See [layout.md](layout.md).
 
 ### Entrypoint
 
@@ -126,9 +142,11 @@ A string or an argv list. Paths stay inside the plugin directory.
 - Any other relative file is executed directly.
 - An argv list whose first element contains a slash is resolved inside the plugin directory. A bare name such as `python3` is left for `PATH`.
 
-## Five-step interface `dap.plugin.v1`
+## Interface `dap.plugin.v1`
 
 Newline-delimited JSON-RPC 2.0. The core writes a request and waits for the matching `id`. Do not print logs on stdout. Use stderr.
+
+A run calls `initialize`, `watch`, `propose`, `act`, and `report`. When DAP quits it also calls `shutdown`. An unknown method should return an error. The core treats that as a failed call, except `shutdown`: if that method is missing or slow, DAP still stops the process.
 
 Request:
 
@@ -147,8 +165,6 @@ Failure:
 ```json
 {"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"what broke"}}
 ```
-
-An unknown method should return an error. The core treats that as a failed call.
 
 ### `initialize`
 
@@ -272,6 +288,24 @@ Result:
 
 Metrics are stored on the plugin and shown on Home when the UI has them. A failed `report` does not fail the run.
 
+### `shutdown`
+
+Sent once when the person quits DAP, runs `da quit` / `da stop`, or the process receives `SIGINT` or `SIGTERM`. The core has already stopped the scheduler from starting new runs and has waited up to 10 seconds for in-flight `act` calls.
+
+Params:
+
+```json
+{ "reason": "quit" }
+```
+
+Result:
+
+```json
+{ "ok": true }
+```
+
+Finish any private work, then return. DAP waits up to 3 seconds for this reply, appends a `plugin.stop` ledger row, and then stops the process. Do not start a new watch from `shutdown`.
+
 ## Minimal loop
 
 ```python
@@ -299,6 +333,8 @@ def handle(method, params):
         return {"status": "done", "summary": "done"}
     if method == "report":
         return {"metrics": []}
+    if method == "shutdown":
+        return {"ok": True}
     raise RuntimeError("unknown method " + method)
 
 for line in sys.stdin:

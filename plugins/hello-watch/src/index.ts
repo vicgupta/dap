@@ -54,6 +54,9 @@ const plugin: PluginHandler = {
       ],
     };
   },
+  async shutdown() {
+    return { ok: true };
+  },
 };
 
 serve(plugin);

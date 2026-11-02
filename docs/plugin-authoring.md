@@ -2,7 +2,7 @@
 
 A plugin is a directory with `plugin.yaml` and a program that speaks JSON-RPC 2.0 on stdin and stdout. DAP does not host a model. You, or your coding agent, write the program. The core installs it only after a person approves a change card.
 
-The machine-readable contract is [schemas/plugin.schema.json](../schemas/plugin.schema.json). `da plugin validate <path>` checks that schema, then the semantic rules in `internal/manifest`, then starts the process and calls `initialize`, `watch`, `propose`, `act`, `report`, and an unknown method.
+The machine-readable contract is [schemas/plugin.schema.json](../schemas/plugin.schema.json). `da plugin validate <path>` checks that schema, then the semantic rules in `internal/manifest`, then starts the process and calls `initialize`, `watch`, `propose`, `act`, `report`, and an unknown method. Quit sends `shutdown` separately. A missing `shutdown` does not fail that quit.
 
 This page is enough to write a plugin without reading the Go source. [plugins.md](plugins.md) is the shorter reference. [runtime.md](runtime.md) is how the scheduler, inbox, guardrails, and ledger behave. [cli.md](cli.md) is every `da` command.
 
@@ -16,7 +16,7 @@ Core version: `0.1.0`. Interface: `dap.plugin.v1`.
 | `capability` | Other plugins will depend on this one. It offers a service. | Usually none. Other plugins call it by being started after it. | Started before plugins that depend on it. |
 | `workflow` | The work is an ordered list of steps, and some steps must pause. `plugins/workflow`. | Usually `every`. | Nothing besides the label. Pausing is your card with effects. |
 
-All three types implement the same five methods. Pick the label that matches the job so a person reading the Plugins page understands it.
+All three types implement the same methods: `initialize`, `watch`, `propose`, `act`, `report`, and `shutdown`. Pick the label that matches the job so a person reading the Plugins page understands it.
 
 ## plugin.yaml
 
@@ -36,6 +36,7 @@ Unknown keys are rejected. `da plugin validate` reports the schema path and the 
 | `provides` | no | none | Labels, non-empty strings. |
 | `config` | no | none | Keys the core will store and pass to `initialize`. |
 | `schedule` | no | manual | One of `every`, `cron`, or `at`. |
+| `tile` | no | medium | Home span: `size` and optional `min`, each `small`, `medium`, or `large`. `size` cannot be smaller than `min`. |
 | `ui` | no | none | Static files served on their own loopback origin. |
 
 ### Entrypoint
@@ -123,7 +124,7 @@ Empty schedule means the plugin runs only from **Run now**.
 
 The scheduler ticks once a second. A run up to 2 minutes late still counts as on time. Later than that, DAP records one missed run and catches up once. It does not replay skipped slots. Pending cards do not block the next run.
 
-`watch` and `propose` share a 60 second budget. `initialize` waits 20 seconds. `act` waits 45 seconds. `report` waits 15 seconds. A failed `report` does not fail the run.
+`watch` and `propose` share a 60 second budget. `initialize` waits 20 seconds. `act` waits 45 seconds. `report` waits 15 seconds. A failed `report` does not fail the run. `shutdown` waits 3 seconds when DAP quits. A missing `shutdown` does not stop the quit.
 
 ### Config
 
@@ -147,9 +148,9 @@ ui:
   title: Notes
 ```
 
-`entry` must stay inside the plugin directory. `route` must start with `/plugins/` and defaults to `/plugins/<name>/`. The core serves the entry file's directory on a separate `127.0.0.1` port. `GET /plugins/<name>/` on the admin origin redirects there. The page receives `dap-token`, `dap-api`, `dap-plugin`, and `dap-inbox`. It does not receive the admin token. Content-Security-Policy includes `frame-ancestors 'none'`.
+`entry` must stay inside the plugin directory. `route` must start with `/plugins/` and defaults to `/plugins/<name>/`. The core serves the entry file's directory on a separate `127.0.0.1` port. `GET /plugins/<name>/` on the admin origin redirects there. The page receives `dap-token`, `dap-api`, `dap-plugin`, `dap-inbox`, `dap-theme`, and `dap-density`. It does not receive the admin token. Content-Security-Policy includes `frame-ancestors 'none'`.
 
-This core does not yet inject a theme. Ship a `theme-boot.js` that reads `?theme=light|dark|system` and sets `data-theme` on `<html>` before the stylesheet. A later core serves shared tokens at `/theme.css`. Until then, define your own tokens for both light and dark.
+The sandbox sets `<html data-theme>` and `<html data-density>` and serves `/theme.css`, `/theme-boot.js`, `/layout.css`, and `/layout-boot.js`. Link those before your own stylesheet. Style with the theme tokens (`--bg`, `--surface`, `--ink`, `--muted`, `--line`, `--accent`, and the rest) and the density tokens (`--card-pad`, `--card-gap`, `--stack-gap`, `--layout-gap`). Do not hardcode a light palette. See [theme.md](theme.md) and [layout.md](layout.md).
 
 ## JSON-RPC
 
@@ -291,7 +292,7 @@ Call `dap-api` (`/api/...` on the plugin origin) with the plugin token. The sand
 
 A plugin page can approve, edit, reject, or snooze its own cards: `GET /inbox` and `POST /inbox/{id}/approve|edit|reject|snooze`. Those calls use the plugin token and the same guardrails as the core inbox. The page can also send the person to `dap-inbox`. The core inbox keys are `j`/`k` move, `a` approves, `e` edits, `r` rejects, `s` snoozes.
 
-Theme: read `?theme=` before paint, as `examples` scaffolds do in `ui/theme-boot.js`. Support `light`, `dark`, and `system`.
+Theme and density: link `/theme-boot.js`, `/layout-boot.js`, `/theme.css`, and `/layout.css` before your stylesheet. The sandbox sets `data-theme` (`system`, `light`, or `dark`) and `data-density` (`comfortable` or `compact`) from the query, then from saved settings. Use the tokens in those stylesheets. Compact density should tighten spacing, not hide actions. See [theme.md](theme.md) and [layout.md](layout.md).
 
 ## Data
 
@@ -355,7 +356,7 @@ The TypeScript reference is [plugins/hello-watch](../plugins/hello-watch). `da p
 
 1. `da plugin new note-watch --type watcher` writes TypeScript. `runtime: node` and `entrypoint: dist/index.js`. The source imports `@dap/plugin-sdk` from `vendor/plugin-sdk`.
 2. The manifest declares `note.watch` as `ask_first` and runs every hour. Nothing is sent, so `effects` is empty. The card still waits because the mode is ask-first.
-3. `src/index.ts` answers the five methods through `serve()`. Unknown methods return a JSON-RPC error. `npm test` builds and checks `initialize` with `node:test`.
+3. `src/index.ts` answers `initialize`, `watch`, `propose`, `act`, `report`, and `shutdown` through `serve()`. Unknown methods return a JSON-RPC error. `npm test` builds and checks `initialize` with `node:test`.
 4. `da plugin validate .` builds when `dist` is stale, then must print `"ok": true`.
 5. Install only after you have read the permission sentence, with `da plugin install . --approve`, or by approving the change card from **Create plugin**.
 
@@ -384,6 +385,9 @@ const plugin: PluginHandler = {
   async report() {
     return { metrics: [{ key: "notes", label: "Notes", value: 1 }] };
   },
+  async shutdown() {
+    return { ok: true };
+  },
 };
 
 serve(plugin);
@@ -411,9 +415,12 @@ def act(params, api):
 def report(params, api):
     return {"metrics": [{"key": "notes", "label": "Notes", "value": 1}]}
 
+def shutdown(params, api):
+    return {"ok": True}
+
 if __name__ == "__main__":
     dap_plugin.serve({
-        "initialize": initialize, "watch": watch, "propose": propose, "act": act, "report": report,
+        "initialize": initialize, "watch": watch, "propose": propose, "act": act, "report": report, "shutdown": shutdown,
     })
 ```
 

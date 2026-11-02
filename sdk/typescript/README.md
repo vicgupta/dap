@@ -21,6 +21,9 @@ const plugin: PluginHandler = {
   async report() {
     return { metrics: [] };
   },
+  async shutdown() {
+    return { ok: true };
+  },
 };
 
 serve(plugin);
@@ -28,4 +31,6 @@ serve(plugin);
 
 `Host` (created for you inside `serve` after `initialize`) calls the scoped plugin API: config is on `init.config`, scratch state is `putState` / `state`, secrets are `secretGet` / `secretSet` / `secretDelete`, and mail is `mailThreads` / `mailSend`. `mailSend` still requires an approved card. The plugin never sees an OAuth token.
 
-`readBoot`, `applyTheme`, and `pluginFetch` are for a plugin page. They read `dap-token`, `dap-api`, and `?theme=`.
+`shutdown` is optional. DAP sends `{"reason":"quit"}` when the person quits. If the handler omits it, `serve` still replies `{ "ok": true }`.
+
+`readBoot`, `applyTheme`, and `pluginFetch` are for a plugin page. They read `dap-token`, `dap-api`, `?theme=`, and the theme tokens from `/theme.css`. Pair that stylesheet with `/layout.css` so `data-density` tightens spacing.

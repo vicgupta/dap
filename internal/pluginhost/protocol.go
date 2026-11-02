@@ -18,6 +18,7 @@ const (
 	MethodPropose    = "propose"
 	MethodAct        = "act"
 	MethodReport     = "report"
+	MethodShutdown   = "shutdown"
 )
 
 // InitParams is the argument to initialize.
@@ -74,6 +75,18 @@ type ReportParams struct {
 // ReportResult is the plugin's metrics.
 type ReportResult struct {
 	Metrics []model.Metric `json:"metrics"`
+}
+
+// ShutdownParams tells a plugin that DAP is quitting.
+// The plugin should finish its own in-flight work and return.
+// A missing method is not fatal: the core still stops the process.
+type ShutdownParams struct {
+	Reason string `json:"reason,omitempty"`
+}
+
+// ShutdownResult is the optional reply to shutdown.
+type ShutdownResult struct {
+	OK bool `json:"ok"`
 }
 
 // Negotiated is the interface id a plugin agreed to, defaulting to v1.

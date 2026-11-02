@@ -11,4 +11,6 @@ var (
 	ErrDenied = errors.New("permission denied")
 	// ErrBadState means the card is not in a state that allows the action.
 	ErrBadState = errors.New("invalid card state")
+	// ErrStopping means DAP is quitting and will not start new work.
+	ErrStopping = errors.New("DAP is shutting down")
 )

@@ -30,6 +30,8 @@ def handle(method, params):
         return {"status": "done", "summary": "Recorded."}
     if method == "report":
         return {"metrics": [{"key": "runs", "label": "Runs", "value": 1}]}
+    if method == "shutdown":
+        return {"ok": True}
     raise RuntimeError("unknown method " + str(method))
 
 for line in sys.stdin:

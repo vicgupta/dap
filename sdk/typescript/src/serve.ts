@@ -1,5 +1,5 @@
 import { Host } from "./host.js";
-import type { ActParams, InitParams, PluginHandler, ProposeParams, ReportParams, WatchParams } from "./types.js";
+import type { ActParams, InitParams, PluginHandler, ProposeParams, ReportParams, ShutdownParams, WatchParams } from "./types.js";
 
 interface RpcRequest {
   id?: unknown;
@@ -59,6 +59,11 @@ export function serve(handler: PluginHandler): void {
           break;
         case "report":
           result = await handler.report(params as unknown as ReportParams);
+          break;
+        case "shutdown":
+          result = handler.shutdown
+            ? await handler.shutdown(params as unknown as ShutdownParams)
+            : { ok: true };
           break;
         default:
           throw new Error("unknown method " + String(req.method));

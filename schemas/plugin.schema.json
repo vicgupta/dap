@@ -131,6 +131,15 @@
         "route": { "type": "string" },
         "title": { "type": "string" }
       }
+    },
+    "tile": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Home dashboard span. size is the preferred span. min is the smallest span Home may offer.",
+      "properties": {
+        "size": { "enum": ["small", "medium", "large"] },
+        "min": { "enum": ["small", "medium", "large"] }
+      }
     }
   }
 }

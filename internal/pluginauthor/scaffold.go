@@ -94,7 +94,6 @@ func Scaffold(opt Options) (string, error) {
 		files["ui/index.html"] = uiHTML(name)
 		files["ui/app.js"] = uiJS()
 		files["ui/app.css"] = uiCSS()
-		files["ui/theme-boot.js"] = themeBoot()
 	}
 	for rel, body := range files {
 		path := filepath.Join(abs, filepath.FromSlash(rel))

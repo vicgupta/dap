@@ -13,6 +13,7 @@ import (
 	"github.com/robfig/cron/v3"
 	"gopkg.in/yaml.v3"
 
+	"github.com/vicgupta/dap/internal/layout"
 	"github.com/vicgupta/dap/internal/semver"
 	"github.com/vicgupta/dap/internal/version"
 )
@@ -42,6 +43,14 @@ type Manifest struct {
 	Config        []ConfigField  `json:"config,omitempty" yaml:"config,omitempty"`
 	Schedule      Schedule       `json:"schedule" yaml:"schedule"`
 	UI            *UI            `json:"ui,omitempty" yaml:"ui,omitempty"`
+	Tile          *TileSpec      `json:"tile,omitempty" yaml:"tile,omitempty"`
+}
+
+// TileSpec is the dashboard tile's preferred span and the smallest span
+// the core should still offer. size and min are small, medium, or large.
+type TileSpec struct {
+	Size string `json:"size,omitempty" yaml:"size,omitempty"`
+	Min  string `json:"min,omitempty" yaml:"min,omitempty"`
 }
 
 // Dependency names another plugin and the versions that satisfy it.
@@ -217,6 +226,31 @@ func ParseSchedule(s string) (Schedule, error) {
 	}
 }
 
+func normalizeTile(t *TileSpec) error {
+	if t.Size == "" {
+		t.Size = layout.Medium
+	} else {
+		size, err := layout.NormalizeSize(t.Size)
+		if err != nil {
+			return fmt.Errorf("tile.size: %w", err)
+		}
+		t.Size = size
+	}
+	if t.Min == "" {
+		t.Min = layout.Small
+	} else {
+		min, err := layout.NormalizeSize(t.Min)
+		if err != nil {
+			return fmt.Errorf("tile.min: %w", err)
+		}
+		t.Min = min
+	}
+	if layout.Rank(t.Size) < layout.Rank(t.Min) {
+		return fmt.Errorf("tile.size %s is smaller than tile.min %s", t.Size, t.Min)
+	}
+	return nil
+}
+
 // UI is the optional per-plugin web entry.
 type UI struct {
 	Entry string `json:"entry" yaml:"entry"`
@@ -382,6 +416,11 @@ func (m *Manifest) Validate(dir string) error {
 	for _, p := range m.Provides {
 		if strings.TrimSpace(p) == "" {
 			return fmt.Errorf("provides contains an empty value")
+		}
+	}
+	if m.Tile != nil {
+		if err := normalizeTile(m.Tile); err != nil {
+			return err
 		}
 	}
 	if m.UI != nil {

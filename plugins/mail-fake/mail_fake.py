@@ -33,6 +33,8 @@ def handle(method, params):
         raise RuntimeError("The demo mailbox does not send on its own.")
     if method == "report":
         return {"metrics": [{"key": "provider", "label": "Provider", "value": "fake"}]}
+    if method == "shutdown":
+        return {"ok": True}
     raise RuntimeError("unknown method %s" % method)
 
 

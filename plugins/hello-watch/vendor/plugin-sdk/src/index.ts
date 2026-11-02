@@ -21,6 +21,8 @@ export type {
   ReportParams,
   ReportResult,
   SendRequest,
+  ShutdownParams,
+  ShutdownResult,
   Tile,
   WatchParams,
   WatchResult,

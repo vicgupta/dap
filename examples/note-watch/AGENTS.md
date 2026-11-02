@@ -5,7 +5,7 @@ You are editing the plugin in this directory (note-watch, type watcher, language
 ## Rules
 
 - Speak JSON-RPC 2.0, one JSON object per line, on stdout. Logs go to stderr. Never print a prompt, a log line, or a stack trace on stdout.
-- Implement initialize, watch, propose, act, and report. Unknown methods return a JSON-RPC error.
+- Implement initialize, watch, propose, act, report, and shutdown. shutdown receives {"reason":"quit"} and returns {"ok": true}. Unknown methods return a JSON-RPC error.
 - Declare the smallest permission list that does the job. Modes are only allowed or ask_first. An undeclared permission is denied.
 - Anything that sends, spends, or deletes must be a decision card with that effect. Do not perform it in watch or propose. act runs only after the person approves.
 - A change to this plugin's own config or schedule is a change card (kind change). Do not write it yourself.
@@ -35,5 +35,8 @@ propose result: {"cards": [{"title": "...", "summary": "...", "kind": "action", 
 act result: {"status": "done", "summary": "..."}
 
 report result: {"metrics": [{"key": "runs", "label": "Runs", "value": 1}]}
+
+shutdown params: {"reason": "quit"}
+shutdown result: {"ok": true}
 
 Effects may only be sends, spends, or deletes. kind is action or change.
