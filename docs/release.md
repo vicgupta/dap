@@ -63,6 +63,25 @@ xattr -dr com.apple.quarantine DAP.app
 
 `install.sh` already runs that `xattr` command.
 
+## Installer
+
+`install.sh` and `install.ps1` copy the `da` CLI into the directory where you run them (or `DAP_INSTALL_DIR`, `--dir`, or `-InstallDir`). They check SHA256, do not change `PATH`, and do not use sudo or an administrator prompt. On macOS, `install.sh` runs `xattr -d com.apple.quarantine` on the copied binary. On Windows, `install.ps1` runs `Unblock-File` on `da.exe`.
+
+```bash
+gh release download <tag> --repo vicgupta/dap --pattern install.sh && sh install.sh
+./da run
+```
+
+```powershell
+gh release download <tag> --repo vicgupta/dap --pattern install.ps1
+powershell -ExecutionPolicy Bypass -Scope Process -File .\install.ps1
+.\da.exe run
+```
+
+`-Scope Process` changes execution policy only for that PowerShell process. Data stays in `~/.dap`, `%USERPROFILE%\.dap`, or `$DAP_HOME`. To run `da` from another directory, add the folder to `PATH` yourself. The scripts print that command and do not run it.
+
+v0.1.0-alpha.4 ships the macOS `da` tarballs and Windows `da.exe` zips (`da-<version>-windows-amd64.zip` and `da-<version>-windows-arm64.zip`, each containing only `da.exe`). It does not ship Linux archives or `DAP.app`.
+
 ## Later tags: Linux and Windows
 
 `packaging/release.sh` and `.github/workflows/release.yml` add these archives next to the macOS files. `checksums.txt` covers every file. Pre-release tags (`-alpha`, `-beta`, `-rc`) stay marked pre-release.
@@ -73,9 +92,11 @@ xattr -dr com.apple.quarantine DAP.app
 | `da-<version>-linux-arm64.tar.gz` | Same for arm64 |
 | `dap_<debver>_amd64.deb` | `/usr/bin/da`, `/usr/bin/dap`, `/usr/share/dap/plugins` |
 | `dap_<debver>_arm64.deb` | Same for arm64 |
+| `da-<version>-windows-amd64.zip` | `da.exe` only |
+| `da-<version>-windows-arm64.zip` | `da.exe` only |
 | `DAP-<version>-windows-amd64.zip` | `da.exe`, `DAP.cmd`, and `plugins\` |
-| `install.sh` | macOS and Linux |
-| `install.ps1` | Windows |
+| `install.sh` | macOS and Linux CLI, into the current directory |
+| `install.ps1` | Windows CLI, into the current directory |
 
 `<version>` is the tag without `v`. `<debver>` is the same string with the first hyphen replaced by `~`, so `0.1.0-alpha.2` becomes `0.1.0~alpha.2`. There is no AppImage.
 
@@ -85,16 +106,9 @@ xattr -dr com.apple.quarantine DAP.app
 gh release download <tag> --repo vicgupta/dap --pattern install.sh && sh install.sh
 ```
 
-On Linux the script installs:
+On Linux, `install.sh` copies `da` into the current directory. It does not change `PATH`. Run `./da run` from that directory. The archive also contains `dap` and `plugins/` if you want to copy those yourself. `dap` runs `da run`, and both commands have to stay in the same directory.
 
-| Piece | Location |
-| --- | --- |
-| `da` and `dap` | `~/.local/bin` |
-| plugins | `~/.local/share/dap/plugins` |
-
-`dap` runs `da run`. Both commands have to stay in the same directory.
-
-The `.deb` is the other install path, and it needs `sudo`:
+The `.deb` is a separate install path, and it needs `sudo`. `install.sh` does not:
 
 ```bash
 gh release download <tag> --repo vicgupta/dap --pattern 'dap_*_amd64.deb' --pattern checksums.txt
@@ -110,10 +124,11 @@ The chromeless window needs Google Chrome, Chromium, or Microsoft Edge. Otherwis
 
 ```powershell
 gh release download <tag> --repo vicgupta/dap --pattern install.ps1
-powershell -ExecutionPolicy Bypass -File .\install.ps1
+powershell -ExecutionPolicy Bypass -Scope Process -File .\install.ps1
+.\da.exe run
 ```
 
-The script installs into `%LOCALAPPDATA%\DAP`, prepends that folder to the user `PATH`, unblocks the files, and creates a Start menu shortcut named **DAP** that runs `da.exe run`. Double-click `DAP.cmd` in that folder to do the same. Data stays in `%USERPROFILE%\.dap`, or in `%DAP_HOME%`.
+The script copies `da.exe` into the current directory (a normal user folder; not Program Files), runs `Unblock-File` on that copy, and does not change the user or system `PATH`. It does not write HKLM, install a service, or ask for elevation. Data stays in `%USERPROFILE%\.dap`, or in `%DAP_HOME%`.
 
 ### SmartScreen
 
@@ -125,10 +140,9 @@ In PowerShell, from the folder that contains the exe:
 
 ```powershell
 Unblock-File .\da.exe
-Unblock-File .\DAP.cmd
 ```
 
-`install.ps1` unblocks the copy it installs. The chromeless window needs Microsoft Edge or Google Chrome. Otherwise DAP opens the default browser.
+`install.ps1` already unblocks the copy it writes. A browser download can still mark the zip with a Mark-of-the-Web (`Zone.Identifier`). SmartScreen can show **Windows protected your PC** the first time an unsigned exe runs. **More info**, then **Run anyway**, does not grant administrator rights. The chromeless window needs Microsoft Edge or Google Chrome. Otherwise DAP opens the default browser.
 
 ## After install
 
@@ -142,7 +156,7 @@ da plugin install /Applications/DAP.app/Contents/Resources/plugins/workflow --ap
 da run
 ```
 
-Use the plugins directory the installer printed (`~/.local/share/dap/plugins`, `/usr/share/dap/plugins`, or `%LOCALAPPDATA%\DAP\plugins`). Gmail and Outlook connect through Composio: save the API key on Connections, then press Connect. The steps are in [composio.md](composio.md). The demo mailbox (`mail-fake`) does not need a key. Nothing sends until you approve a card. Direct Microsoft Graph, and legacy direct Gmail, are documented in [inbox-followups.md](inbox-followups.md).
+The CLI installer does not copy example plugins. Use a checkout of this repo, the plugins inside a macOS app zip, or the `plugins/` directory from a Linux archive. Gmail and Outlook connect through Composio: save the API key on Connections, then press Connect. The steps are in [composio.md](composio.md). The demo mailbox (`mail-fake`) does not need a key. Nothing sends until you approve a card. Direct Microsoft Graph, and legacy direct Gmail, are documented in [inbox-followups.md](inbox-followups.md).
 
 ## Version string
 

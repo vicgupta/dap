@@ -230,7 +230,7 @@ One-time: \`gh auth login\`
 gh release download ${tag} --repo vicgupta/dap --pattern install.sh && sh install.sh
 \`\`\`
 
-\`install.sh\` uses that gh login, checks SHA256, installs DAP.app and \`da\`, and clears the quarantine flag. Double-click DAP.app to run \`da run\`. Data stays in ~/.dap or \$DAP_HOME.
+\`install.sh\` uses that gh login, checks SHA256, copies \`da\` into the current directory, and clears the quarantine flag on that binary. It does not change PATH. Run \`./da run\`. Data stays in ~/.dap or \$DAP_HOME.
 
 Direct downloads are on this release. Apple Silicon: \`DAP-${version}-macos-arm64.zip\` and \`da-${version}-darwin-arm64.tar.gz\`. Intel: the amd64 files. Universal: \`DAP-${version}-macos-universal.zip\` and \`da-${version}-darwin-universal.tar.gz\`. Checksums are in \`checksums.txt\`.
 
