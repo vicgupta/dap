@@ -5,6 +5,7 @@ package ledger
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -52,9 +53,10 @@ type Entry struct {
 
 // Ledger appends JSONL to a single file.
 type Ledger struct {
-	path string
-	mu   sync.Mutex
-	now  func() time.Time
+	path   string
+	mu     sync.Mutex
+	now    func() time.Time
+	closed bool
 }
 
 // Open creates the ledger file if needed. The file mode is 0600.
@@ -77,9 +79,31 @@ func Open(dir string) (*Ledger, error) {
 func (l *Ledger) Path() string { return l.path }
 
 // Append writes one row and fsyncs it. The id and timestamp are filled when empty.
+// Close fsyncs the ledger and rejects later appends.
+func (l *Ledger) Close() error {
+	if l == nil {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.closed {
+		return nil
+	}
+	l.closed = true
+	f, err := os.OpenFile(l.path, os.O_RDWR, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return f.Sync()
+}
+
 func (l *Ledger) Append(e Entry) (Entry, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.closed {
+		return Entry{}, errors.New("ledger is closed")
+	}
 	if e.ID == "" {
 		e.ID = id.New("l")
 	}

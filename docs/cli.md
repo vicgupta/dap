@@ -15,6 +15,16 @@ While `da serve` or `da run` is up, it writes `run.json` and holds `dap.lock`. O
 
 `da doctor` and `da plugin approve` start plugins when they open the directory themselves, then stop them on exit. The other commands do not start plugin processes unless a server is already running.
 
+## `da version`
+
+`da version`, `da --version`, and `da -V` print JSON and exit `0`.
+
+```json
+{ "ok": true, "version": "0.1.0" }
+```
+
+A release build also includes `release` (the tag without a leading `v`), `commit`, and `date`. A local `go build` omits those. Plugin compatibility uses `version`. A pre-release tag is not written into that field, because plugin semver rejects it.
+
 ## `da init`
 
 Creates the data directory (mode `0700`) and `config.json` if it is missing.
@@ -61,6 +71,21 @@ If the window cannot be opened, that error is a second JSON object on stderr. Th
 da run
 da run --addr 127.0.0.1:8787
 ```
+
+## `da quit`
+
+Stops a DAP that is already running. `da stop` is the same command. It reads `run.json` and `POST`s `/api/quit` with the admin token and `X-DAP-Request: quit`. That is the same shutdown as the Quit button and as Ctrl+C: the scheduler stops, in-flight `act` calls get up to 10 seconds, plugins receive `shutdown`, the ledger and state are flushed, `run.json` is removed, `dap.lock` is released, and the process exits 0.
+
+```bash
+da quit
+da stop
+```
+
+```json
+{ "ok": true }
+```
+
+If nothing is listening, the command exits `1` with `DAP is not running`. It does not start a server.
 
 ## `da doctor`
 

@@ -12,6 +12,7 @@ function readBoot() {
 const state = {
   route: routeFromHash(),
   selected: 0,
+  selectedId: "",
   error: "",
   notice: "",
   mode: null,
@@ -19,7 +20,24 @@ const state = {
   preview: null,
   connecting: "",
   data: {},
+  quitConfirm: null,
+  quitPending: false,
+  quitting: false,
+  theme: document.documentElement.getAttribute("data-theme") || "system",
+  themeOpen: false,
+  layout: initialLayout(),
+  dragging: false,
+  splitOpen: false,
+  forceScroll: false,
+  scrollReset: false,
+  focusSelector: "",
 };
+
+const THEME_MODES = [
+  { id: "light", label: "Light" },
+  { id: "dark", label: "Dark" },
+  { id: "system", label: "System" },
+];
 
 const ICONS = {
   home: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2.5 7.2 8 2.8l5.5 4.4V13a1 1 0 0 1-1 1h-3.2V9.6H6.7V14H3.5a1 1 0 0 1-1-1V7.2Z"/></svg>',
@@ -28,6 +46,20 @@ const ICONS = {
   guard: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2.2 13 4.2v3.6c0 3-2.1 4.8-5 6-2.9-1.2-5-3-5-6V4.2L8 2.2Z"/></svg>',
   plugins: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 2.5h4V5H6zM3 6.5h4V9H3zM9 6.5h4V9H9zM6 10h4v2.5H6z"/><path d="M8 5v1.5M5 9v1.5h6V9"/></svg>',
   connections: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="4" cy="8" r="1.6"/><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="11" r="1.6"/><path d="M5.5 7.4 10.4 5.6M5.5 8.6l4.9 2"/></svg>',
+  power: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M8 2.2v5.2"/><path d="M5.05 3.7a5 5 0 1 0 5.9 0"/></svg>',
+  layoutList: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 4.5h10M3 8h10M3 11.5h10"/></svg>',
+  layoutGrid: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/></svg>',
+  layoutBoard: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2.5" width="3.5" height="11" rx="1"/><rect x="6.25" y="2.5" width="3.5" height="8" rx="1"/><rect x="10.5" y="2.5" width="3.5" height="6" rx="1"/></svg>',
+  layoutSplit: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2.5" width="12" height="11" rx="1.5"/><path d="M7 2.5v11"/></svg>',
+  densityComfy: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 3.5h10M3 8h10M3 12.5h10"/></svg>',
+  densityCompact: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 3h10M3 6.2h10M3 9.4h10M3 12.6h10"/></svg>',
+  drag: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="6" cy="3.5" r="1.15"/><circle cx="10" cy="3.5" r="1.15"/><circle cx="6" cy="8" r="1.15"/><circle cx="10" cy="8" r="1.15"/><circle cx="6" cy="12.5" r="1.15"/><circle cx="10" cy="12.5" r="1.15"/></svg>',
+  pin: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6.2 2.4h3.6l-.5 3.6 2.2 2.2H4.5l2.2-2.2-.5-3.6Z"/><path d="M8 8.4v5"/></svg>',
+  chevron: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6.2 8 10.2 12 6.2"/></svg>',
+  sun: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="8" cy="8" r="2.3" fill="currentColor" stroke="none"/><path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.3 3.3l1.3 1.3M11.4 11.4l1.3 1.3M12.7 3.3l-1.3 1.3M4.6 11.4l-1.3 1.3"/></svg>',
+  moon: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M9.4 1.7a5.5 5.5 0 1 0 4.6 8.9A4.6 4.6 0 0 1 9.4 1.7Z"/></svg>',
+  monitor: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="2" y="2.4" width="12" height="8.2" rx="1.3"/><path d="M6 13.6h4M8 10.6v3"/></svg>',
+  check: '<svg class="check" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3.2 8.2 6.4 11.4 12.8 4.6"/></svg>',
 };
 
 function routeFromHash() {
@@ -43,12 +75,14 @@ function esc(s) {
 }
 
 async function api(path, opts = {}) {
+  const headers = {
+    Authorization: "Bearer " + DAP.token,
+    "Content-Type": "application/json",
+    ...(opts.headers || {}),
+  };
   const res = await fetch(path, {
     method: opts.method || "GET",
-    headers: {
-      Authorization: "Bearer " + DAP.token,
-      "Content-Type": "application/json",
-    },
+    headers,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
@@ -80,6 +114,225 @@ function modeLabel(mode) {
   return mode || "";
 }
 
+function initialLayout() {
+  const Layout = window.DAPLayout;
+  if (!Layout) {
+    return { home: { view: "grid", density: "comfortable", order: [], pinned: [], collapsed: [] }, inbox: { view: "list", density: "comfortable", order: [], pinned: [], collapsed: [] } };
+  }
+  if (window.__DAP_LAYOUT__) return Layout.normalize(window.__DAP_LAYOUT__);
+  try {
+    const raw = localStorage.getItem("dap.layout");
+    if (raw) return Layout.normalize(JSON.parse(raw));
+  } catch (e) { /* private mode */ }
+  const root = document.documentElement;
+  return Layout.normalize({
+    home: { view: root.getAttribute("data-home-view"), density: root.getAttribute("data-density") },
+    inbox: { view: root.getAttribute("data-inbox-view"), density: "comfortable" },
+  });
+}
+
+function applyLayoutAttrs() {
+  const route = state.route === "inbox" ? "inbox" : "home";
+  const prefs = state.layout[route] || state.layout.home;
+  document.documentElement.setAttribute("data-density", (prefs && prefs.density) || "comfortable");
+  document.documentElement.setAttribute("data-home-view", state.layout.home.view || "grid");
+  document.documentElement.setAttribute("data-inbox-view", state.layout.inbox.view || "list");
+  window.__DAP_LAYOUT__ = state.layout;
+}
+
+function commitLayout() {
+  if (window.DAPLayout) state.layout = window.DAPLayout.normalize(state.layout);
+  try { localStorage.setItem("dap.layout", JSON.stringify(state.layout)); } catch (e) { /* private mode */ }
+  applyLayoutAttrs();
+  render();
+  api("/api/settings", { method: "PUT", body: { layout: state.layout } }).catch((err) => {
+    state.error = err.message;
+    render();
+  });
+}
+
+function themeName(id) {
+  const found = THEME_MODES.find((t) => t.id === id);
+  return found ? found.label : "System";
+}
+
+function themeIcon(id) {
+  if (id === "light") return ICONS.sun;
+  if (id === "dark") return ICONS.moon;
+  return ICONS.monitor;
+}
+
+function applyTheme(mode) {
+  if (!["system", "light", "dark"].includes(mode)) return;
+  state.theme = mode;
+  document.documentElement.setAttribute("data-theme", mode);
+  try { localStorage.setItem("dap.theme", mode); } catch (e) { /* private mode */ }
+}
+
+function themeControl() {
+  const cur = state.theme || "system";
+  const label = themeName(cur);
+  const open = state.themeOpen;
+  const items = THEME_MODES.map((t) => {
+    const on = t.id === cur;
+    return `<button type="button" role="menuitemradio" class="theme-option" aria-checked="${on ? "true" : "false"}" data-act="theme-set" data-theme="${t.id}">
+      ${themeIcon(t.id)}<span>${t.label}</span>${on ? ICONS.check : ""}
+    </button>`;
+  }).join("");
+  return `<div class="theme">
+    <button type="button" class="theme-btn" data-act="theme-toggle" title="Theme: ${label}" aria-label="Theme: ${label}" aria-haspopup="menu" aria-expanded="${open ? "true" : "false"}" aria-controls="theme-menu">
+      ${themeIcon(cur)}
+    </button>
+    ${open ? `<div id="theme-menu" class="theme-menu" role="menu" aria-label="Theme">${items}</div>` : ""}
+  </div>`;
+}
+
+function withLayout(url) {
+  try {
+    const u = new URL(url, location.href);
+    u.searchParams.set("density", (state.layout.home && state.layout.home.density) || "comfortable");
+    u.searchParams.set("theme", state.theme || "system");
+    return u.toString();
+  } catch (e) {
+    return url;
+  }
+}
+
+function viewSwitcher(kind) {
+  const current = state.layout[kind].view;
+  const options = kind === "inbox"
+    ? [["list", "List", ICONS.layoutList], ["grid", "Grid", ICONS.layoutGrid], ["board", "Board", ICONS.layoutBoard], ["split", "Split", ICONS.layoutSplit]]
+    : [["grid", "Grid", ICONS.layoutGrid], ["list", "List", ICONS.layoutList], ["board", "Board", ICONS.layoutBoard]];
+  return switcher(kind === "inbox" ? "Inbox layout" : "Home layout", kind, "layout-set", options, current);
+}
+
+function densitySwitcher(kind) {
+  const current = state.layout[kind].density;
+  const options = [["comfortable", "Comfortable", ICONS.densityComfy], ["compact", "Compact", ICONS.densityCompact]];
+  return switcher(kind === "inbox" ? "Inbox density" : "Home density", kind, "density-set", options, current);
+}
+
+function switcher(label, kind, act, options, current) {
+  const buttons = options.map(([id, name, icon]) => {
+    const on = id === current;
+    const focus = kind + "-" + act + "-" + id;
+    return `<button type="button" role="radio" class="layout-btn" data-act="${act}" data-kind="${kind}" data-value="${id}" data-focus="${focus}" aria-checked="${on ? "true" : "false"}" aria-label="${esc(name)}" title="${esc(name)}" tabindex="${on ? "0" : "-1"}">${icon}</button>`;
+  }).join("");
+  return `<div class="layout-switch" role="radiogroup" aria-label="${esc(label)}">${buttons}</div>`;
+}
+
+function layoutBar(kind) {
+  return `<div class="layout-bar">${viewSwitcher(kind)}${densitySwitcher(kind)}</div>`;
+}
+
+function hasId(list, id) {
+  return (list || []).indexOf(id) >= 0;
+}
+
+function cardTools(kind, id, extra) {
+  const prefs = state.layout[kind];
+  const pinned = hasId(prefs.pinned, id);
+  const collapsed = hasId(prefs.collapsed, id);
+  return `<div class="card-tools">
+    <button type="button" class="icon-btn drag-handle" draggable="true" data-kind="${esc(kind)}" data-id="${esc(id)}" data-focus="drag-${esc(kind)}-${esc(id)}" aria-label="Reorder. Arrow keys move this card." title="Drag to reorder. Arrow keys move it.">${ICONS.drag}</button>
+    <button type="button" class="icon-btn" data-act="pin" data-kind="${esc(kind)}" data-id="${esc(id)}" aria-pressed="${pinned ? "true" : "false"}" aria-label="${pinned ? "Unpin" : "Pin"}" title="${pinned ? "Unpin" : "Pin"}">${ICONS.pin}</button>
+    <button type="button" class="icon-btn" data-act="collapse" data-kind="${esc(kind)}" data-id="${esc(id)}" aria-pressed="${collapsed ? "true" : "false"}" aria-label="${collapsed ? "Expand card" : "Collapse card"}" title="${collapsed ? "Expand" : "Collapse"}">${ICONS.chevron}</button>
+    ${extra || ""}
+  </div>`;
+}
+
+function sizeSwitch(plugin, current, min) {
+  const rank = { small: 1, medium: 2, large: 3 };
+  const floor = rank[min] || 1;
+  const buttons = ["small", "medium", "large"].map((size) => {
+    const disabled = rank[size] < floor;
+    const on = size === current;
+    const label = size.charAt(0).toUpperCase() + size.slice(1);
+    return `<button type="button" role="radio" class="size-btn" data-act="size" data-id="${esc(plugin)}" data-value="${size}" aria-checked="${on ? "true" : "false"}" aria-label="${label}" title="${label}" ${disabled ? "disabled" : ""}>${label.charAt(0)}</button>`;
+  }).join("");
+  return `<div class="size-switch" role="radiogroup" aria-label="Card size">${buttons}</div>`;
+}
+
+function arrangePlugins(plugins) {
+  const list = plugins || [];
+  if (!window.DAPLayout) return list;
+  return window.DAPLayout.arrange(list, (p) => p.name, state.layout.home);
+}
+
+function homeBucket(p) {
+  if ((p.pending || 0) > 0) return "needs";
+  const status = (p.health && p.health.status) || "";
+  if (status === "error") return "down";
+  if (status === "degraded" || (p.missed && p.missed.text)) return "attention";
+  return "healthy";
+}
+
+function pluginCard(p) {
+  const health = p.health || {};
+  const dot = health.status || "degraded";
+  const missed = p.missed && p.missed.text ? `<div class="missed">${esc(p.missed.text)}</div>` : "";
+  const lines = (p.tile && p.tile.lines || []).map((l) =>
+    `<div class="tile-line"><span>${esc(l.label)}</span><strong>${esc(l.value)}</strong></div>`).join("");
+  const tile = p.tile && (p.tile.title || lines)
+    ? `<div class="tile"><strong>${esc(p.tile.title || p.name)}</strong>${lines}</div>` : "";
+  const prefs = state.layout.home;
+  const size = window.DAPLayout
+    ? window.DAPLayout.resolveSize((prefs.sizes || {})[p.name], p.tile_size, p.tile_min)
+    : (p.tile_size || "medium");
+  const collapsed = hasId(prefs.collapsed, p.name);
+  const pinned = hasId(prefs.pinned, p.name);
+  const ui = p.ui_url
+    ? `<a class="ghost" href="${esc(withLayout(p.ui_url))}" target="_blank" rel="noreferrer">Open ${esc(p.ui_title || "web UI")}</a>`
+    : "";
+  return `<article class="card plugin-card size-${esc(size)} ${collapsed ? "is-collapsed" : ""} ${pinned ? "is-pinned" : ""}" data-kind="home" data-card-id="${esc(p.name)}">
+    <header>
+      <span class="dot ${esc(dot)}"></span>
+      <div>
+        <h2>${esc(p.name)}</h2>
+        <p class="sub">${esc(p.type)} · ${esc(p.schedule || "manual")}</p>
+      </div>
+      <div class="head-side">
+        ${p.pending ? `<span class="count-pill">${p.pending} pending</span>` : ""}
+        ${cardTools("home", p.name, sizeSwitch(p.name, size, p.tile_min || "small"))}
+      </div>
+    </header>
+    <div class="card-details">
+      <dl class="meta">
+        <div><dt>Last run</dt><dd>${esc(fmtTime(p.last_run))}</dd></div>
+        <div><dt>Next run</dt><dd>${esc(fmtTime(p.next_run))}</dd></div>
+      </dl>
+      ${tile}
+      <p class="sub">${esc(health.message || "")}</p>
+    </div>
+    ${missed}
+    <div class="actions">
+      <button class="primary" data-act="run" data-name="${esc(p.name)}">Run now</button>
+      ${ui}
+    </div>
+  </article>`;
+}
+
+function visibleInbox() {
+  const cards = inboxCards();
+  if (!window.DAPLayout) return cards;
+  return window.DAPLayout.arrange(cards, (c) => c.id, state.layout.inbox);
+}
+
+function syncSelection(cards) {
+  if (state.selectedId) {
+    const found = cards.findIndex((c) => c.id === state.selectedId);
+    if (found >= 0) state.selected = found;
+  }
+  if (!cards.length) {
+    state.selected = 0;
+    return cards;
+  }
+  if (state.selected >= cards.length) state.selected = cards.length - 1;
+  if (state.selected < 0) state.selected = 0;
+  state.selectedId = cards[state.selected].id;
+  return cards;
+}
+
 function shell(inner) {
   const pending = state.data.home ? state.data.home.pending : 0;
   const item = (route, label, icon) => {
@@ -89,9 +342,13 @@ function shell(inner) {
     return `<a class="${active}" href="${href}" ${active ? 'aria-current="page"' : ""}>${ICONS[icon]}<span>${label}</span>${badge}</a>`;
   };
   return `
-    <div class="app">
-      <aside class="sidebar">
+    <div class="frame">
+      <header class="topbar">
         <div class="brand"><strong>DAP</strong><span>Dashboard Agent Platform</span></div>
+        ${themeControl()}
+      </header>
+      <div class="app">
+      <aside class="sidebar">
         <nav class="nav">
           ${item("home", "Home", "home")}
           ${item("inbox", "Decision inbox", "inbox")}
@@ -100,61 +357,136 @@ function shell(inner) {
           ${item("plugins", "Plugins", "plugins")}
           ${item("connections", "Connections", "connections")}
         </nav>
-        <div class="side-foot"><strong>Running locally</strong>All data stays on this machine.</div>
+        ${quitControl()}
       </aside>
       <main class="main">
         ${state.error ? `<div class="banner">${esc(state.error)}</div>` : ""}
         ${state.notice ? `<div class="banner ok">${esc(state.notice)}</div>` : ""}
         ${inner}
       </main>
+      </div>
     </div>`;
+}
+
+function quitNote(st) {
+  const acting = Number(st.acting) || 0;
+  const inflight = Number(st.inflight_actions) || 0;
+  if (acting > 0 && inflight > 0) {
+    return "An approved action is still executing, and a plugin action is in progress. DAP will wait a few seconds for it to finish.";
+  }
+  if (acting > 0) {
+    return "An approved action is still executing. DAP will wait a few seconds for it to finish.";
+  }
+  if (inflight > 0) {
+    return "A plugin action is still in progress. DAP will wait a few seconds for it to finish.";
+  }
+  return "";
+}
+
+function quitControl() {
+  const note = state.quitConfirm && state.quitConfirm.note
+    ? `<p class="quit-note">${esc(state.quitConfirm.note)}</p>` : "";
+  const dialog = state.quitConfirm ? `
+    <div class="quit-dialog" role="dialog" aria-modal="true" aria-labelledby="quit-title" aria-describedby="quit-copy" tabindex="-1">
+      <h2 id="quit-title">Quit DAP?</h2>
+      <p id="quit-copy">Scheduled agents stop running until you open DAP again.</p>
+      ${note}
+      <div class="inline">
+        <button type="button" class="primary" data-act="confirm-quit">Quit</button>
+        <button type="button" class="quiet" data-act="cancel-quit">Cancel</button>
+      </div>
+    </div>` : "";
+  return `
+    <div class="sidebar-end">
+      <div class="side-foot"><strong>Running locally</strong>All data stays on this machine.</div>
+      <div class="quit-wrap">
+        ${dialog}
+        <button type="button" class="quit-btn" data-act="quit" aria-label="Quit DAP">${ICONS.power}<span>Quit</span></button>
+      </div>
+    </div>`;
+}
+
+function focusEl(selector) {
+  const el = document.querySelector(selector);
+  if (!el) return;
+  try { el.focus({ focusVisible: true }); } catch (e) { el.focus(); }
+}
+
+async function beginQuit() {
+  if (state.quitting || state.quitPending) return;
+  state.quitPending = true;
+  state.error = "";
+  let st = {};
+  try {
+    st = await api("/api/quit-status");
+  } catch (err) {
+    state.quitPending = false;
+    state.error = err.message;
+    render();
+    return;
+  }
+  const acting = Number(st.acting) || 0;
+  const inflight = Number(st.inflight_actions) || 0;
+  if (!st.running && acting === 0 && inflight === 0) {
+    await doQuit();
+    return;
+  }
+  state.quitConfirm = { note: quitNote(st) };
+  state.quitPending = false;
+  render();
+  focusEl("[data-act=confirm-quit]");
+}
+
+async function doQuit() {
+  state.quitting = true;
+  state.quitPending = false;
+  try {
+    await api("/api/quit", { method: "POST", body: {}, headers: { "X-DAP-Request": "quit" } });
+  } catch (err) {
+    // The process may close the socket as it exits.
+  }
+  showQuitPage();
+}
+
+function showQuitPage() {
+  state.quitting = true;
+  document.title = "DAP has quit";
+  document.body.innerHTML = `<main class="quit-page"><div><h1>DAP has quit.</h1><p>You can close this window.</p></div></main>`;
+  const closeWin = () => { try { window.close(); } catch (e) {} };
+  closeWin();
+  setTimeout(closeWin, 200);
 }
 
 function homeView() {
   const home = state.data.home;
   if (!home) return shell(`<p class="sub">Loading…</p>`);
-  const cards = (home.plugins || []).map((p) => {
-    const health = p.health || {};
-    const dot = health.status || "degraded";
-    const missed = p.missed && p.missed.text ? `<div class="missed">${esc(p.missed.text)}</div>` : "";
-    const lines = (p.tile && p.tile.lines || []).map((l) =>
-      `<div class="tile-line"><span>${esc(l.label)}</span><strong>${esc(l.value)}</strong></div>`).join("");
-    const tile = p.tile && (p.tile.title || lines)
-      ? `<div class="tile"><strong>${esc(p.tile.title || p.name)}</strong>${lines}</div>` : "";
-    return `<article class="card plugin-card">
-      <header>
-        <span class="dot ${esc(dot)}"></span>
-        <div>
-          <h2>${esc(p.name)}</h2>
-          <p class="sub">${esc(p.type)} · ${esc(p.schedule || "manual")}</p>
-        </div>
-        ${p.pending ? `<span class="count-pill">${p.pending} pending</span>` : ""}
-      </header>
-      <dl class="meta">
-        <div><dt>Last run</dt><dd>${esc(fmtTime(p.last_run))}</dd></div>
-        <div><dt>Next run</dt><dd>${esc(fmtTime(p.next_run))}</dd></div>
-      </dl>
-      ${missed}
-      ${tile}
-      <p class="sub">${esc(health.message || "")}</p>
-      <div class="actions">
-        <button class="primary" data-act="run" data-name="${esc(p.name)}">Run now</button>
-        ${p.ui_url ? `<a class="ghost" style="text-decoration:none;padding:7px 12px;border-radius:10px;border:1px solid var(--line-strong)" href="${esc(p.ui_url)}" target="_blank" rel="noreferrer">Open ${esc(p.ui_title || "web UI")}</a>` : ""}
-      </div>
-    </article>`;
-  }).join("");
+  const plugins = arrangePlugins(home.plugins);
+  const cards = plugins.map(pluginCard).join("");
   const agents = (home.agents || []).map((a) => a.found ? a.name : null).filter(Boolean);
   const agentLine = agents.length
     ? `Coding agents on this machine: ${agents.join(", ")}.`
     : "No coding agent (Claude Code, Codex, OpenCode) was found on PATH. DAP still runs; the agent is optional.";
+  const view = state.layout.home.view;
+  let body = `<div class="card empty"><h2>No plugins yet</h2><p>Install hello-watch and workflow from the Plugins page.</p></div>`;
+  if (cards && view === "board") {
+    const labels = [["needs", "Needs you"], ["attention", "Attention"], ["down", "Down"], ["healthy", "Healthy"]];
+    const cols = labels.map(([id, title]) => {
+      const html = plugins.filter((p) => homeBucket(p) === id).map(pluginCard).join("");
+      return html ? `<section class="board-col"><h2>${title}</h2><div class="stack">${html}</div></section>` : "";
+    }).join("");
+    body = `<div class="board">${cols}</div>`;
+  } else if (cards) {
+    body = `<div class="cards ${esc(view)}">${cards}</div>`;
+  }
   return shell(`
     <header class="page-head">
       <div>
         <h1>Home</h1>
         <p>Every plugin reports here. Nothing sends, spends, or deletes without an approval.</p>
       </div>
+      ${layoutBar("home")}
     </header>
-    ${cards ? `<div class="grid">${cards}</div>` : `<div class="card empty"><h2>No plugins yet</h2><p>Install hello-watch and workflow from the Plugins page.</p></div>`}
+    ${body}
     <p class="sub" style="margin-top:18px">${esc(agentLine)}</p>
   `);
 }
@@ -163,69 +495,117 @@ function inboxCards() {
   return (state.data.inbox && state.data.inbox.cards) || [];
 }
 
-function inboxView() {
-  const cards = inboxCards();
-  if (state.selected >= cards.length) state.selected = Math.max(0, cards.length - 1);
-  const list = cards.map((c, i) => {
-    const selected = i === state.selected;
-    const effects = (c.effects || []).map((e) => `<span class="pill ${esc(e)}">${esc(e)}</span>`).join(" ");
-    const risk = `<span class="pill ${esc(c.risk)}">${esc(modeLabel(c.risk))}</span>`;
-    const kind = c.kind === "change" ? `<span class="pill change">Change</span>` : "";
-    const evidence = (c.evidence || []).map((e) => e.ref ? `${e.label}: ${e.ref}` : e.label).join(" · ");
-    const editing = state.mode && state.mode.id === c.id;
-    let extra = "";
-    if (editing && state.mode.type === "edit") {
-      extra = `<form class="editor" data-act="save-edit" data-id="${esc(c.id)}">
-        <label class="field">Title<input name="title" type="text" value="${esc(c.title)}" /></label>
-        <label class="field">Summary<input name="summary" type="text" value="${esc(c.summary || "")}" /></label>
-        <label class="field">Body<textarea name="body">${esc(c.body || "")}</textarea></label>
-        <div class="inline"><button class="primary" type="submit">Save edit</button><button class="quiet" type="button" data-act="cancel-mode">Cancel</button></div>
-      </form>`;
-    } else if (editing && state.mode.type === "reject") {
-      extra = `<form class="reject-box" data-act="save-reject" data-id="${esc(c.id)}">
-        <label class="field">Why not?<input name="reason" type="text" placeholder="A short reason" required /></label>
-        <div class="inline"><button class="primary" type="submit">Reject</button><button class="quiet" type="button" data-act="cancel-mode">Cancel</button></div>
-      </form>`;
-    } else if (editing && state.mode.type === "snooze") {
-      extra = `<div class="snooze-box inline">
-        <button class="ghost" data-act="snooze-preset" data-id="${esc(c.id)}" data-preset="1h">1 hour</button>
-        <button class="ghost" data-act="snooze-preset" data-id="${esc(c.id)}" data-preset="4h">4 hours</button>
-        <button class="ghost" data-act="snooze-preset" data-id="${esc(c.id)}" data-preset="tomorrow">Tomorrow 8:00</button>
-        <button class="quiet" data-act="cancel-mode">Cancel</button>
-      </div>`;
-    }
-    const snoozed = c.status === "snoozed" ? `<span class="pill">Snoozed until ${esc(fmtTime(c.snooze_until))}</span>` : "";
-    return `<article class="card decision ${selected ? "selected" : ""}" data-index="${i}">
-      <header class="row">
-        <div style="flex:1">
-          <h2>${esc(c.title)}</h2>
-          <div class="who">${esc(c.plugin)} · ${esc(c.kind)}</div>
-        </div>
-        <div class="inline">${kind}${effects}${risk}${snoozed}</div>
-      </header>
+function decisionCard(c, i) {
+  const selected = i === state.selected;
+  const effects = (c.effects || []).map((e) => `<span class="pill ${esc(e)}">${esc(e)}</span>`).join(" ");
+  const risk = `<span class="pill ${esc(c.risk)}">${esc(modeLabel(c.risk))}</span>`;
+  const kind = c.kind === "change" ? `<span class="pill change">Change</span>` : "";
+  const evidence = (c.evidence || []).map((e) => e.ref ? `${e.label}: ${e.ref}` : e.label).join(" · ");
+  const editing = state.mode && state.mode.id === c.id;
+  let extra = "";
+  if (editing && state.mode.type === "edit") {
+    extra = `<form class="editor" data-act="save-edit" data-id="${esc(c.id)}">
+      <label class="field">Title<input name="title" type="text" value="${esc(c.title)}" /></label>
+      <label class="field">Summary<input name="summary" type="text" value="${esc(c.summary || "")}" /></label>
+      <label class="field">Body<textarea name="body">${esc(c.body || "")}</textarea></label>
+      <div class="inline"><button class="primary" type="submit">Save edit</button><button class="quiet" type="button" data-act="cancel-mode">Cancel</button></div>
+    </form>`;
+  } else if (editing && state.mode.type === "reject") {
+    extra = `<form class="reject-box" data-act="save-reject" data-id="${esc(c.id)}">
+      <label class="field">Why not?<input name="reason" type="text" placeholder="A short reason" required /></label>
+      <div class="inline"><button class="primary" type="submit">Reject</button><button class="quiet" type="button" data-act="cancel-mode">Cancel</button></div>
+    </form>`;
+  } else if (editing && state.mode.type === "snooze") {
+    extra = `<div class="snooze-box inline">
+      <button class="ghost" data-act="snooze-preset" data-id="${esc(c.id)}" data-preset="1h">1 hour</button>
+      <button class="ghost" data-act="snooze-preset" data-id="${esc(c.id)}" data-preset="4h">4 hours</button>
+      <button class="ghost" data-act="snooze-preset" data-id="${esc(c.id)}" data-preset="tomorrow">Tomorrow 8:00</button>
+      <button class="quiet" data-act="cancel-mode">Cancel</button>
+    </div>`;
+  }
+  const snoozed = c.status === "snoozed" ? `<span class="pill">Snoozed until ${esc(fmtTime(c.snooze_until))}</span>` : "";
+  const collapsed = !editing && hasId(state.layout.inbox.collapsed, c.id);
+  const pinned = hasId(state.layout.inbox.pinned, c.id);
+  return `<article class="card decision ${selected ? "selected" : ""} ${collapsed ? "is-collapsed" : ""} ${pinned ? "is-pinned" : ""}" data-kind="inbox" data-card-id="${esc(c.id)}" data-index="${i}">
+    <header class="row">
+      <div style="flex:1">
+        <h2>${esc(c.title)}</h2>
+        <div class="who">${esc(c.plugin)} · ${esc(c.kind)}</div>
+      </div>
+      <div class="inline pills">${kind}${effects}${risk}${snoozed}</div>
+      ${cardTools("inbox", c.id)}
+    </header>
+    <div class="card-details">
       ${c.summary ? `<p class="summary">${esc(c.summary)}</p>` : ""}
       ${c.body ? `<div class="body">${esc(c.body)}</div>` : ""}
       ${extra}
-      <footer>
-        <div class="actions">
-          <button class="primary" data-act="approve" data-id="${esc(c.id)}">Approve<kbd>A</kbd></button>
-          <button class="ghost" data-act="edit" data-id="${esc(c.id)}">Edit<kbd>E</kbd></button>
-          <button class="ghost" data-act="reject" data-id="${esc(c.id)}">Reject<kbd>R</kbd></button>
-          <button class="ghost" data-act="snooze" data-id="${esc(c.id)}">Snooze<kbd>S</kbd></button>
-        </div>
-        <div class="evidence">${evidence ? "Evidence · " + esc(evidence) : ""}</div>
-      </footer>
-    </article>`;
-  }).join("");
+    </div>
+    <footer>
+      <div class="actions">
+        <button class="primary" data-act="approve" data-id="${esc(c.id)}">Approve<kbd>A</kbd></button>
+        <button class="ghost" data-act="edit" data-id="${esc(c.id)}">Edit<kbd>E</kbd></button>
+        <button class="ghost" data-act="reject" data-id="${esc(c.id)}">Reject<kbd>R</kbd></button>
+        <button class="ghost" data-act="snooze" data-id="${esc(c.id)}">Snooze<kbd>S</kbd></button>
+      </div>
+      <div class="evidence">${evidence ? "Evidence · " + esc(evidence) : ""}</div>
+    </footer>
+  </article>`;
+}
+
+function splitRow(c, i) {
+  const selected = i === state.selected;
+  return `<div class="split-item ${selected ? "selected" : ""}" data-kind="inbox" data-card-id="${esc(c.id)}">
+    <button type="button" class="split-select" data-act="select-card" data-id="${esc(c.id)}" data-index="${i}">
+      <strong>${esc(c.title)}</strong>
+      <span class="sub">${esc(c.plugin)} · ${esc(modeLabel(c.risk))}</span>
+    </button>
+    <div class="actions">
+      <button class="primary" data-act="approve" data-id="${esc(c.id)}">Approve</button>
+      <button class="ghost" data-act="reject" data-id="${esc(c.id)}">Reject</button>
+    </div>
+  </div>`;
+}
+
+function inboxView() {
+  const cards = syncSelection(visibleInbox());
+  const list = cards.map(decisionCard).join("");
   const waiting = cards.filter((c) => c.status === "pending").length;
+  const view = state.layout.inbox.view;
+  let body = `<div class="card empty"><h2>Nothing waiting</h2><p>Plugins keep watching. Pending cards never block them.</p></div>`;
+  if (list && view === "board") {
+    const groups = [];
+    const seen = {};
+    cards.forEach((c, i) => {
+      if (seen[c.plugin] == null) {
+        seen[c.plugin] = groups.length;
+        groups.push({ plugin: c.plugin, html: "" });
+      }
+      groups[seen[c.plugin]].html += decisionCard(c, i);
+    });
+    body = `<div class="board">${groups.map((g) => `<section class="board-col"><h2>${esc(g.plugin)}</h2><div class="stack">${g.html}</div></section>`).join("")}</div>`;
+  } else if (list && view === "split") {
+    const narrow = window.matchMedia("(max-width: 800px)").matches;
+    const open = state.splitOpen && narrow ? " show-detail" : "";
+    const current = cards[state.selected];
+    body = `<div class="split${open}">
+      <div class="split-list" role="listbox" aria-label="Waiting cards">${cards.map(splitRow).join("")}</div>
+      <div class="split-detail">
+        <button type="button" class="ghost split-back" data-act="split-back">Back</button>
+        ${current ? decisionCard(current, state.selected) : ""}
+      </div>
+    </div>`;
+  } else if (list) {
+    body = `<div class="cards ${esc(view)}">${list}</div>`;
+  }
   return shell(`
     <header class="page-head">
       <div>
         <h1>Decision inbox</h1>
         <p>Needs you · ${waiting}. <span class="keys">j/k move · a approve · e edit · r reject · s snooze</span></p>
       </div>
+      ${layoutBar("inbox")}
     </header>
-    ${list ? `<div class="stack">${list}</div>` : `<div class="card empty"><h2>Nothing waiting</h2><p>Plugins keep watching. Pending cards never block them.</p></div>`}
+    ${body}
   `);
 }
 
@@ -294,7 +674,7 @@ function pluginsView() {
       ${perms}
       <div class="actions" style="margin-top:12px">
         ${p.needs_approval ? `<button class="primary" data-act="approve-manifest" data-name="${esc(p.name)}">Approve permissions</button>` : ""}
-        ${p.ui_url ? `<a class="ghost" style="text-decoration:none;padding:7px 12px;border-radius:10px;border:1px solid var(--line-strong)" href="${esc(p.ui_url)}" target="_blank" rel="noreferrer">Open ${esc(p.ui_title || "web UI")}</a>` : ""}
+        ${p.ui_url ? `<a class="ghost" href="${esc(withLayout(p.ui_url))}" target="_blank" rel="noreferrer">Open ${esc(p.ui_title || "web UI")}</a>` : ""}
         <button class="ghost" data-act="remove" data-name="${esc(p.name)}">Remove</button>
       </div>
     </article>`;
@@ -425,7 +805,9 @@ function graphFallback(c) {
 }
 
 function render() {
+  if (state.quitting) return;
   const root = document.getElementById("app");
+  if (!root) return;
   const html = {
     home: homeView,
     inbox: inboxView,
@@ -434,12 +816,27 @@ function render() {
     plugins: pluginsView,
     connections: connectionsView,
   }[state.route]();
+  const y = window.scrollY;
   root.innerHTML = html;
-  const selected = root.querySelector(".decision.selected");
-  if (selected) selected.scrollIntoView({ block: "nearest" });
+  if (state.scrollReset) {
+    window.scrollTo(0, 0);
+    state.scrollReset = false;
+  } else if (state.forceScroll) {
+    const selected = root.querySelector(".decision.selected, .split-item.selected");
+    if (selected) selected.scrollIntoView({ block: "nearest" });
+    state.forceScroll = false;
+  } else {
+    window.scrollTo(0, y);
+  }
+  if (state.focusSelector) {
+    const el = root.querySelector(state.focusSelector);
+    if (el) el.focus({ preventScroll: true });
+    state.focusSelector = "";
+  }
 }
 
 async function refresh() {
+  if (state.quitting || state.quitConfirm || state.quitPending) return;
   try {
     if (state.route === "home" || !state.data.home) {
       state.data.home = await api("/api/home");
@@ -456,7 +853,10 @@ async function refresh() {
   } catch (err) {
     state.error = err.message;
   }
+  if (state.dragging || state.themeOpen) return;
   if (state.mode && (state.mode.type === "edit" || state.mode.type === "reject")) return;
+  const ae = document.activeElement;
+  if (ae && ae.closest && ae.closest(".layout-switch, .drag-handle, .size-switch")) return;
   render();
 }
 
@@ -475,17 +875,94 @@ async function act(name, fn) {
 }
 
 document.addEventListener("click", (ev) => {
+  if (state.themeOpen && !ev.target.closest(".theme")) {
+    state.themeOpen = false;
+    if (!ev.target.closest("[data-act]") && !ev.target.closest(".decision")) {
+      render();
+      return;
+    }
+  }
   const el = ev.target.closest("[data-act]");
   if (!el) {
     const card = ev.target.closest(".decision");
-    if (card) {
+    if (card && state.route === "inbox") {
       state.selected = Number(card.dataset.index);
+      state.selectedId = card.dataset.cardId || "";
       render();
     }
     return;
   }
   const actName = el.dataset.act;
   const id = el.dataset.id;
+  if (actName === "theme-toggle") {
+    state.themeOpen = !state.themeOpen;
+    render();
+    if (state.themeOpen) {
+      const current = document.querySelector('.theme-option[aria-checked="true"]');
+      if (current) current.focus();
+    }
+    return;
+  }
+  if (actName === "theme-set") {
+    const mode = el.dataset.theme;
+    state.themeOpen = false;
+    applyTheme(mode);
+    render();
+    api("/api/settings", { method: "PUT", body: { theme: mode } }).catch((err) => {
+      state.error = err.message;
+      render();
+    });
+    return;
+  }
+  if (actName === "layout-set" || actName === "density-set") {
+    const kind = el.dataset.kind === "inbox" ? "inbox" : "home";
+    if (actName === "layout-set") state.layout[kind].view = el.dataset.value;
+    else state.layout[kind].density = el.dataset.value;
+    state.focusSelector = `[data-focus="${el.dataset.focus}"]`;
+    commitLayout();
+    return;
+  }
+  if (actName === "pin") {
+    const kind = el.dataset.kind === "inbox" ? "inbox" : "home";
+    const view = state.layout[kind];
+    const pinned = new Set(view.pinned || []);
+    if (pinned.has(id)) pinned.delete(id);
+    else {
+      pinned.add(id);
+      view.order = [id].concat((view.order || []).filter((x) => x !== id));
+    }
+    view.pinned = [...pinned];
+    commitLayout();
+    return;
+  }
+  if (actName === "collapse") {
+    const kind = el.dataset.kind === "inbox" ? "inbox" : "home";
+    const view = state.layout[kind];
+    const cur = new Set(view.collapsed || []);
+    if (cur.has(id)) cur.delete(id);
+    else cur.add(id);
+    view.collapsed = [...cur];
+    commitLayout();
+    return;
+  }
+  if (actName === "size") {
+    state.layout.home.sizes = state.layout.home.sizes || {};
+    state.layout.home.sizes[id] = el.dataset.value;
+    commitLayout();
+    return;
+  }
+  if (actName === "select-card") {
+    state.selected = Number(el.dataset.index);
+    state.selectedId = id;
+    if (window.matchMedia("(max-width: 800px)").matches) state.splitOpen = true;
+    render();
+    return;
+  }
+  if (actName === "split-back") {
+    state.splitOpen = false;
+    render();
+    return;
+  }
   if (actName === "approve") {
     act("approve", () => api("/api/inbox/" + id + "/approve", { method: "POST", body: {} }));
   } else if (actName === "edit" || actName === "reject" || actName === "snooze") {
@@ -551,6 +1028,14 @@ document.addEventListener("click", (ev) => {
     const body = { client_id: input ? input.value.trim() : "", calendar: !!(cal && cal.checked) };
     if (el.dataset.mode) body.mode = el.dataset.mode;
     act("setup", () => api("/api/connections/" + provider + "/setup", { method: "POST", body }));
+  } else if (actName === "quit") {
+    beginQuit();
+  } else if (actName === "cancel-quit") {
+    state.quitConfirm = null;
+    render();
+    focusEl("[data-act=quit]");
+  } else if (actName === "confirm-quit") {
+    doQuit();
   } else if (actName === "confirm-install") {
     act("install", async () => {
       await api("/api/plugins/install", { method: "POST", body: { path: state.installPath, approve: true } });
@@ -592,19 +1077,166 @@ document.addEventListener("change", (ev) => {
   }));
 });
 
+function layoutKeys(ev) {
+  const group = ev.target.closest(".layout-switch");
+  if (!group) return;
+  const buttons = [...group.querySelectorAll('button[role="radio"]:not(:disabled)')];
+  const i = buttons.indexOf(ev.target.closest("button"));
+  if (i < 0) return;
+  let n = i;
+  if (ev.key === "ArrowRight" || ev.key === "ArrowDown") n = (i + 1) % buttons.length;
+  else if (ev.key === "ArrowLeft" || ev.key === "ArrowUp") n = (i - 1 + buttons.length) % buttons.length;
+  else if (ev.key === "Home") n = 0;
+  else if (ev.key === "End") n = buttons.length - 1;
+  else return;
+  ev.preventDefault();
+  state.focusSelector = `[data-focus="${buttons[n].dataset.focus}"]`;
+  buttons[n].click();
+}
+
+function reorderKeys(ev) {
+  const handle = ev.target.closest(".drag-handle");
+  if (!handle) return;
+  if (ev.key !== "ArrowUp" && ev.key !== "ArrowDown") return;
+  ev.preventDefault();
+  const kind = handle.dataset.kind;
+  const id = handle.dataset.id;
+  const cards = kind === "inbox"
+    ? visibleInbox()
+    : arrangePlugins((state.data.home && state.data.home.plugins) || []);
+  const ids = cards.map((item) => kind === "inbox" ? item.id : item.name);
+  const index = ids.indexOf(id);
+  const next = ev.key === "ArrowUp" ? index - 1 : index + 1;
+  if (index < 0 || next < 0 || next >= ids.length) return;
+  state.focusSelector = `[data-focus="drag-${kind}-${id}"]`;
+  applyReorder(kind, id, ids[next]);
+}
+
+function applyReorder(kind, fromId, toId) {
+  if (!fromId || !toId || fromId === toId || !window.DAPLayout) return;
+  const prefs = state.layout[kind];
+  const cards = kind === "inbox"
+    ? visibleInbox()
+    : arrangePlugins((state.data.home && state.data.home.plugins) || []);
+  const ids = cards.map((item) => kind === "inbox" ? item.id : item.name);
+  const next = window.DAPLayout.reorder(prefs, ids, fromId, toId);
+  prefs.order = next.order;
+  prefs.pinned = next.pinned;
+  commitLayout();
+}
+
+document.addEventListener("dragstart", (ev) => {
+  const handle = ev.target.closest && ev.target.closest(".drag-handle");
+  if (!handle) return;
+  state.dragging = true;
+  ev.dataTransfer.setData("text/plain", JSON.stringify({ kind: handle.dataset.kind, id: handle.dataset.id }));
+  ev.dataTransfer.effectAllowed = "move";
+  const card = handle.closest("[data-card-id]");
+  if (card) card.classList.add("is-dragging");
+});
+
+document.addEventListener("dragend", () => {
+  state.dragging = false;
+  document.querySelectorAll(".is-dragging, .drag-over").forEach((el) => el.classList.remove("is-dragging", "drag-over"));
+});
+
+document.addEventListener("dragover", (ev) => {
+  if (!state.dragging) return;
+  const card = ev.target.closest && ev.target.closest("[data-card-id]");
+  if (!card) return;
+  ev.preventDefault();
+  document.querySelectorAll(".drag-over").forEach((el) => el.classList.remove("drag-over"));
+  card.classList.add("drag-over");
+});
+
+document.addEventListener("drop", (ev) => {
+  const card = ev.target.closest && ev.target.closest("[data-card-id]");
+  if (!card || !state.dragging) return;
+  ev.preventDefault();
+  let payload = {};
+  try { payload = JSON.parse(ev.dataTransfer.getData("text/plain") || "{}"); } catch (e) { payload = {}; }
+  if (payload.kind && payload.kind === card.dataset.kind) applyReorder(payload.kind, payload.id, card.dataset.cardId);
+  state.dragging = false;
+});
+
 document.addEventListener("keydown", (ev) => {
+  if (state.quitConfirm) {
+    if (ev.key === "Escape") {
+      state.quitConfirm = null;
+      render();
+      focusEl("[data-act=quit]");
+    }
+    return;
+  }
+  const inTheme = ev.target.closest && ev.target.closest(".theme");
+  if (!state.themeOpen && inTheme && (ev.key === "ArrowDown" || ev.key === "ArrowUp")) {
+    state.themeOpen = true;
+    render();
+    const current = document.querySelector('.theme-option[aria-checked="true"]');
+    if (current) current.focus();
+    ev.preventDefault();
+    return;
+  }
+  if (state.themeOpen) {
+    const items = [...document.querySelectorAll(".theme-option")];
+    const index = items.findIndex((el) => el === document.activeElement);
+    if (ev.key === "Escape") {
+      state.themeOpen = false;
+      render();
+      const btn = document.querySelector(".theme-btn");
+      if (btn) btn.focus();
+      ev.preventDefault();
+      return;
+    }
+    if (ev.key === "Tab") {
+      state.themeOpen = false;
+      const menu = document.getElementById("theme-menu");
+      if (menu) menu.remove();
+      const btn = document.querySelector(".theme-btn");
+      if (btn) btn.setAttribute("aria-expanded", "false");
+      return;
+    }
+    if (items.length && (ev.key === "ArrowDown" || ev.key === "ArrowUp" || ev.key === "Home" || ev.key === "End")) {
+      let next = index;
+      if (ev.key === "ArrowDown") next = index < 0 ? 0 : (index + 1) % items.length;
+      if (ev.key === "ArrowUp") next = index < 0 ? items.length - 1 : (index - 1 + items.length) % items.length;
+      if (ev.key === "Home") next = 0;
+      if (ev.key === "End") next = items.length - 1;
+      items[next].focus();
+      ev.preventDefault();
+    }
+    if (ev.key === "Enter" || ev.key === " ") {
+      const current = document.activeElement;
+      if (current && current.dataset && current.dataset.theme) current.click();
+      ev.preventDefault();
+    }
+    return;
+  }
+  if (inTheme) return;
+  if (ev.target.closest && ev.target.closest(".layout-switch")) {
+    layoutKeys(ev);
+    return;
+  }
+  if (ev.target.closest && ev.target.closest(".drag-handle")) {
+    reorderKeys(ev);
+    return;
+  }
   if (state.route !== "inbox") return;
   const tag = (ev.target.tagName || "").toLowerCase();
-  if (tag === "input" || tag === "textarea" || tag === "select") return;
-  const cards = inboxCards();
+  if (tag === "input" || tag === "textarea" || tag === "select" || tag === "button" || tag === "a") return;
+  const cards = visibleInbox();
   if (!cards.length) return;
   const key = ev.key.toLowerCase();
   if (key === "j" || ev.key === "ArrowDown") {
     state.selected = Math.min(cards.length - 1, state.selected + 1);
+    state.selectedId = cards[state.selected].id;
+    state.forceScroll = true;
     render();
     ev.preventDefault();
   } else if (key === "k" || ev.key === "ArrowUp") {
     state.selected = Math.max(0, state.selected - 1);
+    state.selectedId = cards[state.selected].id;
+    state.forceScroll = true;
     render();
     ev.preventDefault();
   } else if (key === "a") {
@@ -623,16 +1255,70 @@ document.addEventListener("keydown", (ev) => {
 });
 
 window.addEventListener("hashchange", () => {
+  if (state.quitting) return;
   state.route = routeFromHash();
   state.mode = null;
+  state.quitConfirm = null;
+  state.splitOpen = false;
+  state.scrollReset = true;
+  applyLayoutAttrs();
+  render();
   refresh();
 });
 
+async function syncLayout() {
+  let remote = null;
+  try {
+    const res = await api("/api/settings");
+    remote = window.DAPLayout ? window.DAPLayout.normalize(res.layout) : res.layout;
+  } catch (e) {
+    return;
+  }
+  let hadLocal = false;
+  try { hadLocal = !!localStorage.getItem("dap.layout"); } catch (e) { hadLocal = true; }
+  if (!hadLocal && remote) {
+    const next = JSON.stringify(remote);
+    const cur = JSON.stringify(state.layout);
+    state.layout = remote;
+    try { localStorage.setItem("dap.layout", next); } catch (e) { /* private mode */ }
+    applyLayoutAttrs();
+    if (next !== cur) render();
+    return;
+  }
+  if (remote && JSON.stringify(state.layout) !== JSON.stringify(remote)) {
+    api("/api/settings", { method: "PUT", body: { layout: state.layout } }).catch(() => {});
+  }
+}
+
+async function syncTheme() {
+  try {
+    const saved = await api("/api/settings");
+    let local = "";
+    try { local = localStorage.getItem("dap.theme") || ""; } catch (e) { /* ignore */ }
+    if (!["system", "light", "dark"].includes(local)) local = "";
+    if (!local && saved.theme) {
+      applyTheme(saved.theme);
+      render();
+      return;
+    }
+    if (local && saved.theme && local !== saved.theme) {
+      applyTheme(local);
+      await api("/api/settings", { method: "PUT", body: { theme: local } });
+    }
+  } catch (e) { /* the page still follows localStorage */ }
+}
+
+applyLayoutAttrs();
 refresh();
+syncLayout();
+syncTheme();
 setInterval(() => {
-  if (document.hidden) return;
+  if (document.hidden || state.dragging || state.themeOpen) return;
+  if (state.quitting || state.quitConfirm || state.quitPending) return;
   if (state.mode && (state.mode.type === "edit" || state.mode.type === "reject" || state.mode.type === "snooze")) return;
-  const tag = (document.activeElement && document.activeElement.tagName || "").toLowerCase();
+  const ae = document.activeElement;
+  const tag = (ae && ae.tagName || "").toLowerCase();
   if (tag === "input" || tag === "textarea" || tag === "select") return;
+  if (ae && ae.closest && ae.closest(".layout-switch, .drag-handle, .size-switch")) return;
   refresh();
 }, 2000);

@@ -49,6 +49,26 @@ func TestInitInstallListCheck(t *testing.T) {
 	}
 }
 
+func TestVersion(t *testing.T) {
+	for _, arg := range []string{"--version", "version", "-V"} {
+		var stdout, stderr bytes.Buffer
+		code := Run([]string{arg}, Options{Stdout: &stdout, Stderr: &stderr})
+		if code != 0 {
+			t.Fatalf("%s code %d %s %s", arg, code, stdout.String(), stderr.String())
+		}
+		var body map[string]any
+		if err := json.Unmarshal(stdout.Bytes(), &body); err != nil {
+			t.Fatalf("%s: %v %s", arg, err, stdout.String())
+		}
+		if body["ok"] != true || body["version"] != "0.1.0" {
+			t.Fatalf("%s: %s", arg, stdout.String())
+		}
+		if _, ok := body["release"]; ok {
+			t.Fatalf("%s: dev build should omit release: %s", arg, stdout.String())
+		}
+	}
+}
+
 func run(t *testing.T, dir string, args ...string) (int, string, string) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer

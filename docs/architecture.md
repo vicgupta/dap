@@ -12,7 +12,9 @@ The UI is HTML, CSS, and JavaScript embedded with `go:embed` (`internal/web`). `
 - Windows: `msedge --app=<url>`, then `chrome --app=<url>`, then `cmd /c start "" <url>`.
 - Linux: `google-chrome`, `google-chrome-stable`, `chromium`, and `chromium-browser`, each with `--app=<url> --new-window`, then `xdg-open`.
 
-`--app` is a chromeless window. The fallback is a normal browser tab. If none of those exist, `da run` still serves and writes an error to stderr. The server keeps running until Ctrl+C (`SIGINT`, and `SIGTERM` on Unix).
+`--app` is a chromeless window. The fallback is a normal browser tab. If none of those exist, `da run` still serves and writes an error to stderr. The server keeps running until **Quit** in the sidebar, `da quit`, or Ctrl+C (`SIGINT`, and `SIGTERM` on Unix). Those three use the same shutdown: stop the scheduler, wait up to 10 seconds for in-flight `act` calls, call `shutdown` on each plugin, flush the ledger and state, remove `run.json`, release `dap.lock`, stop HTTP, and exit 0.
+
+`da run` gives Chrome, Edge, or Chromium a private `--user-data-dir` under the data directory (`browser-profile/`). That process is the only browser DAP will stop on quit. `open` and `xdg-open` are normal tabs; the page asks the window to close itself, and those fallbacks are left alone.
 
 Wails was not used. A Wails (or webview) build needs CGO and a platform SDK: WebKitGTK on Linux, WebView2 on Windows, WKWebView on macOS. `go build` would fail without that SDK, and cross-compilation gets harder. Plugin traffic already goes through HTTP, so a native shell can wrap this binary later without a plugin change.
 
@@ -30,6 +32,10 @@ The default is `127.0.0.1:7391`, stored in `config.json` by `da init`. `--addr` 
 - `dap-api`, `/api`
 - `dap-plugin`, the plugin name
 - `dap-inbox`, the admin origin's `/#/inbox`
+- `dap-theme`, `system`, `light`, or `dark`
+- `dap-density`, `comfortable` or `compact` (the Home density)
+
+The redirect to a plugin UI adds `?theme=` and `?density=`. The sandbox sets `<html data-theme>` and `<html data-density>`, plus the matching meta tags, and serves `/theme.css`, `/theme-boot.js`, `/layout.css`, and `/layout-boot.js`. See [theme.md](theme.md) and [layout.md](layout.md).
 
 The sandbox proxies `/api/...` to the core's plugin API at `/v1/<name>/...` and forwards the bearer token. It serves the plugin's UI directory and the shared Inter fonts. Content-Security-Policy includes `frame-ancestors 'none'` and `connect-src 'self'`. The plugin origin cannot read the admin token.
 
@@ -38,6 +44,7 @@ The admin API used by the UI and the CLI, all under the admin token:
 | Method | Path |
 | --- | --- |
 | GET | `/api/home`, `/api/inbox`, `/api/activity`, `/api/guardrails`, `/api/plugins`, `/api/doctor`, `/api/approved`, `/api/connections` |
+| GET, PUT | `/api/settings` with `theme` (`system`, `light`, `dark`) and `layout` (view, density, order, pinned, collapsed, sizes). Either key may be omitted. |
 | GET | `/api/context` and `/api/context?plugin=<name>` |
 | POST | `/api/inbox/{id}/approve`, `edit`, `reject`, `snooze` |
 | POST | `/api/guardrails` with `plugin`, `permission`, `decision` |
@@ -45,6 +52,8 @@ The admin API used by the UI and the CLI, all under the admin token:
 | POST | `/api/plugins/{name}/remove`, `approve`, `run` |
 | POST | `/api/propose`, `/api/check`, `/api/log`, `/api/outcome`, `/api/tile` |
 | POST | `/api/connections/{provider}/setup`, `connect`, `disconnect`. `provider` is `gmail`, `outlook` (alias `graph`), `fake`, `composio` (API key only), or a toolkit id from `composio/toolkits.json` |
+| GET | `/api/quit-status` — whether plugins are running and whether an action is in flight |
+| POST | `/api/quit` — admin token, loopback peer, `X-DAP-Request: quit`, POST only. Starts the shutdown above |
 | GET | `/plugins/{name}/` redirects to that plugin's loopback origin |
 
 Plugin API routes (suffixes of `api_base`, which is `http://127.0.0.1:<port>/v1/<plugin>`):
@@ -81,7 +90,9 @@ A missing or wrong bearer token is HTTP 401. Bodies are limited to 1 MiB.
 
 The host starts one process per plugin. The working directory is the plugin directory. The environment keeps `PATH`, `HOME`, `USER`, `LOGNAME`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TZ`, `SYSTEMROOT`, `WINDIR`, `TEMP`, `TMP`, `LOCALAPPDATA`, and `USERPROFILE` when they are set, plus `PYTHONUNBUFFERED=1`, `PYTHONIOENCODING=utf-8`, `DAP_PLUGIN`, `DAP_API`, and `DAP_TOKEN`. Other parent variables are not passed in.
 
-On Unix the process is in its own group so stop can signal the group. The host writes one JSON-RPC request at a time and reads responses by `id`. Non-JSON stdout is kept with stderr. The stderr tail is capped around 8 KiB. `initialize` waits up to 20 seconds. A run's `watch` and `propose` share a 60 second budget. `report` waits 15 seconds. `act` waits 45 seconds.
+On Unix the process is in its own group so stop can signal the group. The host writes one JSON-RPC request at a time and reads responses by `id`. Non-JSON stdout is kept with stderr. The stderr tail is capped around 8 KiB. `initialize` waits up to 20 seconds. A run's `watch` and `propose` share a 60 second budget. `report` waits 15 seconds. `act` waits 45 seconds. `shutdown` waits 3 seconds and is sent only when that plugin has no call in progress.
+
+`POST /api/quit` is not on the plugin API. A plugin token is rejected with 401. The plugin origin proxies `/api/...` to `/v1/<name>/...`, so a sandbox cannot reach the admin quit route. The handler also requires a loopback peer, `POST`, and the header `X-DAP-Request: quit`. A cross-site `Origin` or `Sec-Fetch-Site: cross-site` is rejected. The admin token is a bearer header, not a cookie.
 
 Dependencies start first (topological order, names sorted for a stable tie). A plugin whose dependency failed to start is not started. A crash or a failed `initialize` marks the plugin unhealthy. The next manual or scheduled run tries to start it again. Cards left in `acting` because the process stopped are returned to `pending` on the next start.
 

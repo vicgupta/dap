@@ -3,9 +3,18 @@ package version
 
 const (
 	// Version is the core release. Plugin manifests declare the minimum they need.
+	// Release builds keep this at 0.1.0. Pre-release tags are not valid plugin semver.
 	Version = "0.1.0"
 	// InterfaceV1 is the first frozen plugin contract.
 	InterfaceV1 = "dap.plugin.v1"
+)
+
+// Release, Commit, and Date are stamped with -ldflags on a release build.
+// A local `go build` leaves them empty. `da version` omits empty fields.
+var (
+	Release = ""
+	Commit  = ""
+	Date    = ""
 )
 
 // SupportedInterfaces lists contracts this core can host.

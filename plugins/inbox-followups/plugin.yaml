@@ -36,6 +36,9 @@ config:
     default: true
 schedule:
   every: 1h
+tile:
+  size: large
+  min: medium
 ui:
   entry: ui/index.html
   route: /plugins/inbox-followups/

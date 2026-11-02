@@ -2,6 +2,7 @@
 package core
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -10,9 +11,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/vicgupta/dap/internal/layout"
 	"github.com/vicgupta/dap/internal/ledger"
 	"github.com/vicgupta/dap/internal/lockfile"
 	"github.com/vicgupta/dap/internal/mail"
@@ -20,6 +24,7 @@ import (
 	"github.com/vicgupta/dap/internal/pluginhost"
 	"github.com/vicgupta/dap/internal/secrets"
 	"github.com/vicgupta/dap/internal/store"
+	"github.com/vicgupta/dap/internal/theme"
 )
 
 // App is one local DAP instance bound to a data directory.
@@ -33,18 +38,25 @@ type App struct {
 	host    *pluginhost.Host
 	lock    *lockfile.Lock
 
-	mu         sync.Mutex
-	runMu      map[string]*sync.Mutex
-	rt         map[string]*runtime
-	checks     []CheckRecord
-	orderErr   string
-	pluginsUp  bool
-	clock      func() time.Time
-	schedStop  chan struct{}
-	apiLn      net.Listener
-	apiSrv     *http.Server
-	apiBase    string
-	adminToken string
+	mu           sync.Mutex
+	configMu     sync.Mutex
+	runMu        map[string]*sync.Mutex
+	rt           map[string]*runtime
+	checks       []CheckRecord
+	orderErr     string
+	pluginsUp    bool
+	clock        func() time.Time
+	schedStop    chan struct{}
+	apiLn        net.Listener
+	apiSrv       *http.Server
+	apiBase      string
+	adminToken   string
+	stopping     bool
+	inflightOps  int
+	inflightActs int
+	busy         map[string]int
+	shutOnce     sync.Once
+	shutErr      error
 }
 
 type runtime struct {
@@ -68,7 +80,8 @@ type CheckRecord struct {
 
 // FileConfig is the small on-disk config next to the ledger.
 type FileConfig struct {
-	Addr string `json:"addr"`
+	Addr  string `json:"addr"`
+	Theme string `json:"theme,omitempty"`
 }
 
 // Open locks the data directory and loads state. It does not start plugins.
@@ -121,21 +134,15 @@ func Open(dir string) (*App, error) {
 		lock:       lk,
 		runMu:      map[string]*sync.Mutex{},
 		rt:         map[string]*runtime{},
+		busy:       map[string]int{},
 		adminToken: randomToken(),
 	}, nil
 }
 
-// Close stops the scheduler, plugins, and plugin API, then releases the lock.
+// Close shuts DAP down and releases the data directory.
+// Quit, Ctrl+C, and a normal process exit all use Shutdown.
 func (a *App) Close() error {
-	a.StopScheduler()
-	if a.apiSrv != nil {
-		_ = a.apiSrv.Close()
-	}
-	a.host.StopAll()
-	if a.lock != nil {
-		return a.lock.Release()
-	}
-	return nil
+	return a.Shutdown()
 }
 
 // Start brings up the scoped plugin API, the plugins, and the scheduler.
@@ -181,6 +188,7 @@ func ensureConfig(dir string) (FileConfig, error) {
 		if !os.IsNotExist(err) {
 			return FileConfig{}, err
 		}
+		cfg.Theme = theme.System
 		raw, err := json.MarshalIndent(cfg, "", "  ")
 		if err != nil {
 			return FileConfig{}, err
@@ -196,16 +204,179 @@ func ensureConfig(dir string) (FileConfig, error) {
 	if cfg.Addr == "" {
 		cfg.Addr = "127.0.0.1:7391"
 	}
+	cfg.Theme = theme.Stored(cfg.Theme)
 	return cfg, nil
+}
+
+func saveFileConfig(dir string, cfg FileConfig) error {
+	if cfg.Addr == "" {
+		cfg.Addr = "127.0.0.1:7391"
+	}
+	mode, err := theme.Normalize(cfg.Theme)
+	if err != nil {
+		return err
+	}
+	raw, err := readConfigRaw(dir)
+	if err != nil {
+		return err
+	}
+	addr, err := json.Marshal(cfg.Addr)
+	if err != nil {
+		return err
+	}
+	themeRaw, err := json.Marshal(mode)
+	if err != nil {
+		return err
+	}
+	raw["addr"] = addr
+	raw["theme"] = themeRaw
+	return writeConfigRaw(dir, raw)
+}
+
+// Theme is the saved appearance mode: system, light, or dark.
+func (a *App) Theme() string {
+	return LoadFileConfig(a.DataDir).Theme
+}
+
+// SetTheme stores the appearance mode in config.json. Empty is rejected.
+func (a *App) SetTheme(v string) (string, error) {
+	if strings.TrimSpace(v) == "" {
+		return "", fmt.Errorf("theme must be system, light, or dark")
+	}
+	mode, err := theme.Normalize(v)
+	if err != nil {
+		return "", err
+	}
+	a.configMu.Lock()
+	defer a.configMu.Unlock()
+	cfg := LoadFileConfig(a.DataDir)
+	cfg.Theme = mode
+	if err := saveFileConfig(a.DataDir, cfg); err != nil {
+		return "", err
+	}
+	return mode, nil
 }
 
 // LoadFileConfig reads config.json, applying the default address if needed.
 func LoadFileConfig(dir string) FileConfig {
 	cfg, err := ensureConfig(dir)
 	if err != nil {
-		return FileConfig{Addr: "127.0.0.1:7391"}
+		return FileConfig{Addr: "127.0.0.1:7391", Theme: theme.System}
 	}
 	return cfg
+}
+
+// Layout is the card layout saved in config.json. Missing or invalid
+// text becomes the defaults. Other keys in the file are left alone.
+func (a *App) Layout() layout.Settings {
+	raw, err := readConfigRaw(a.DataDir)
+	if err != nil || len(raw["layout"]) == 0 {
+		return layout.Default()
+	}
+	var in layout.Settings
+	if err := json.Unmarshal(raw["layout"], &in); err != nil {
+		return layout.Default()
+	}
+	return layout.Stored(in)
+}
+
+// SetLayout validates and stores the card layout. Keys other than "layout"
+// (for example a theme saved by another change) stay in config.json.
+func (a *App) SetLayout(in layout.Settings) (layout.Settings, error) {
+	next, err := layout.Normalize(in)
+	if err != nil {
+		return layout.Settings{}, err
+	}
+	body, err := json.Marshal(next)
+	if err != nil {
+		return layout.Settings{}, err
+	}
+	a.configMu.Lock()
+	defer a.configMu.Unlock()
+	raw, err := readConfigRaw(a.DataDir)
+	if err != nil {
+		return layout.Settings{}, err
+	}
+	raw["layout"] = body
+	if err := writeConfigRaw(a.DataDir, raw); err != nil {
+		return layout.Settings{}, err
+	}
+	return next, nil
+}
+
+func readConfigRaw(dir string) (map[string]json.RawMessage, error) {
+	path := filepath.Join(dir, "config.json")
+	out := map[string]json.RawMessage{}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			out["addr"] = json.RawMessage(`"127.0.0.1:7391"`)
+			return out, nil
+		}
+		return nil, err
+	}
+	if len(bytes.TrimSpace(b)) > 0 {
+		if err := json.Unmarshal(b, &out); err != nil {
+			return nil, err
+		}
+	}
+	if len(out["addr"]) == 0 || string(out["addr"]) == `""` {
+		out["addr"] = json.RawMessage(`"127.0.0.1:7391"`)
+	}
+	return out, nil
+}
+
+func writeConfigRaw(dir string, raw map[string]json.RawMessage) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	keys := make([]string, 0, len(raw))
+	for k := range raw {
+		if k != "addr" && k != "theme" && k != "layout" {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	ordered := make([]string, 0, len(keys)+3)
+	for _, k := range []string{"addr", "theme", "layout"} {
+		if _, ok := raw[k]; ok {
+			ordered = append(ordered, k)
+		}
+	}
+	ordered = append(ordered, keys...)
+	var buf bytes.Buffer
+	buf.WriteString("{\n")
+	for i, k := range ordered {
+		key, err := json.Marshal(k)
+		if err != nil {
+			return err
+		}
+		val := bytes.TrimSpace(raw[k])
+		if len(val) == 0 {
+			val = []byte("null")
+		}
+		buf.WriteString("  ")
+		buf.Write(key)
+		buf.WriteString(": ")
+		if val[0] == '{' || val[0] == '[' {
+			var pretty bytes.Buffer
+			if err := json.Indent(&pretty, val, "  ", "  "); err == nil {
+				val = pretty.Bytes()
+			}
+		}
+		buf.Write(val)
+		if i < len(ordered)-1 {
+			buf.WriteString(",")
+		}
+		buf.WriteString("\n")
+	}
+	buf.WriteString("}\n")
+	path := filepath.Join(dir, "config.json")
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, buf.Bytes(), 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 func (a *App) now() time.Time {
