@@ -49,6 +49,40 @@ func TestInitInstallListCheck(t *testing.T) {
 	}
 }
 
+func TestServeFlags(t *testing.T) {
+	addr, open := serveFlags(nil, true)
+	if addr != "" || !open {
+		t.Fatalf("default run: %q %v", addr, open)
+	}
+	addr, open = serveFlags([]string{"--addr", "127.0.0.1:9", "--no-browser"}, true)
+	if addr != "127.0.0.1:9" || open {
+		t.Fatalf("no-browser: %q %v", addr, open)
+	}
+	addr, open = serveFlags([]string{"--addr=127.0.0.1:8", "--no-browser", "--open"}, false)
+	if addr != "127.0.0.1:8" || !open {
+		t.Fatalf("open after no-browser: %q %v", addr, open)
+	}
+	_, open = serveFlags([]string{"--open", "--no-browser"}, true)
+	if open {
+		t.Fatal("no-browser should win when it comes last")
+	}
+	_, open = serveFlags(nil, false)
+	if open {
+		t.Fatal("serve default stays closed")
+	}
+}
+
+func TestUsageMentionsNoBrowser(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"help"}, Options{Stdout: &stdout, Stderr: &stderr})
+	if code != 0 {
+		t.Fatal(code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "--no-browser") {
+		t.Fatalf("usage: %s", stdout.String())
+	}
+}
+
 func TestVersion(t *testing.T) {
 	for _, arg := range []string{"--version", "version", "-V"} {
 		var stdout, stderr bytes.Buffer

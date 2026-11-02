@@ -64,7 +64,8 @@ go build -o da ./cmd/da          # Windows: go build -o da.exe ./cmd/da
 ./da plugin install ./plugins/hello-watch --approve
 ./da plugin install ./plugins/workflow --approve
 ./da doctor
-./da run                         # serve the UI and open a window
+./da run                         # serve the UI and open it in the default browser
+./da run --no-browser           # print the URL and do not open a browser
 ```
 
 `make build`, `make test`, and `make run` do the same build, `go test ./...`, and `./da run`.
@@ -75,13 +76,15 @@ Data directory, first match: `--data <dir>`, `--data=<dir>`, `$DAP_HOME`, then `
 
 ## Architecture
 
-`da` is one Go binary. It embeds the web UI and serves it on `127.0.0.1`. `da run` opens that URL in a chromeless window. It tries, in order:
+`da` is one Go binary. It embeds the web UI and serves it on `127.0.0.1`. `da run` prints that URL and opens it in the operating system's default browser. Chrome is not required. Edge, Firefox, Brave, and Safari work the same way, including on a machine that has none of the Chromium browsers installed.
 
-| OS | First choices | Fallback |
-| --- | --- | --- |
-| macOS | Google Chrome `--app`, Microsoft Edge `--app` | `open` |
-| Windows | `msedge --app`, `chrome --app` | `cmd /c start` |
-| Linux | `google-chrome`, `google-chrome-stable`, `chromium`, `chromium-browser`, each with `--app` | `xdg-open` |
+| OS | Command |
+| --- | --- |
+| macOS | `open <url>` |
+| Windows | `rundll32 url.dll,FileProtocolHandler <url>` |
+| Linux | `xdg-open <url>` |
+
+`--no-browser` skips that launch. The URL is still printed, so it can be pasted into any browser. DAP does not pass `--app`, a private browser profile, or a remote-debugging port, and quit does not close the browser.
 
 Wails and other native webviews need CGO and a platform SDK at compile time (WebKitGTK, WebView2, or WKWebView). `go build` would then fail on a machine without that SDK. The window is a shell. Plugins talk to the local API, so a native webview can be added later without changing them.
 
@@ -109,7 +112,7 @@ A plugin with a `ui` block is served on its own `127.0.0.1` port. The core route
 
 - **Appearance.** The top bar has System, Light, and Dark. System follows the OS. The choice is in `localStorage` (`dap.theme`) and `config.json` (`theme`). See [docs/theme.md](docs/theme.md).
 - **Home.** Every plugin, health, last run, next run, pending count, missed-run line. Grid, list, or board. Tile size is small, medium, or large.
-- **Chat.** Claude Code or Codex, read-only, with approval cards for anything that would change data or send. Ctrl+Shift+C opens it. See [docs/chat.md](docs/chat.md).
+- **Chat.** Claude Code or Codex, read-only, with approval cards for anything that would change data or send. Ctrl+Shift+. opens it (Command+Shift+. on a Mac). See [docs/chat.md](docs/chat.md).
 - **Decision inbox.** `j` / `k` or the arrow keys move. `a` approves, `e` edits, `r` rejects, `s` snoozes. Shortcuts are ignored while a field is focused. Snooze offers 1 hour, 4 hours, or tomorrow at 08:00 local. Reject asks for a reason. Edit changes the title, summary, and body. List, grid, board (one column per plugin), or a split list and detail. Approve and Reject stay on the card in every layout.
 - **Activity.** The ledger, newest first.
 - **Guardrails.** The baked-in rules, each permission's effective mode, and recent checks. A control can tighten a permission. It cannot loosen one.

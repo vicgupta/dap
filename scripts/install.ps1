@@ -108,7 +108,7 @@ try {
   Write-Host ""
   Write-Host "da.exe is unsigned. On Windows, Unblock-File cleared the download mark on this copy."
   Write-Host "If Windows says 'Windows protected your PC', choose More info, then Run anyway. That is not an administrator prompt."
-  Write-Host "The window needs Microsoft Edge or Google Chrome. Otherwise da.exe run opens the default browser."
+  Write-Host "da.exe run opens the URL in the default browser. Chrome is not required. da.exe run --no-browser only prints the URL."
 }
 finally {
   Remove-Item -Recurse -Force $workdir -ErrorAction SilentlyContinue

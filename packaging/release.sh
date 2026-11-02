@@ -80,7 +80,7 @@ macOS Gatekeeper: right-click DAP.app > Open, or System Settings > Privacy & Sec
 
 Windows SmartScreen: More info > Run anyway. \`install.ps1\` also unblocks the installed copy.
 
-The chromeless window needs Chrome or Edge (Chromium also works on Linux). Otherwise DAP opens the default browser. Example plugins need Python 3. Gmail and Outlook need an OAuth client id. See docs/release.md.
+da run opens the URL in the default browser (\`open\` on macOS, \`rundll32 url.dll,FileProtocolHandler\` on Windows, \`xdg-open\` on Linux). Chrome is not required. Example plugins need Python 3. Gmail and Outlook need an OAuth client id. See docs/release.md.
 EOF
 
 echo "Artifacts in ${out}"

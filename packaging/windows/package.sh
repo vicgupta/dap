@@ -61,8 +61,8 @@ In PowerShell, from the folder that contains da.exe:
   Unblock-File .\\da.exe
   Unblock-File .\\DAP.cmd
 
-The chromeless window needs Microsoft Edge or Google Chrome. Otherwise
-DAP opens the URL in the default browser.
+da.exe run opens the URL in the default browser. Chrome is not required.
+da.exe run --no-browser only prints the URL.
 
 Example plugins, from this folder:
 

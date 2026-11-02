@@ -503,7 +503,12 @@ select {
 }
 .icon-btn:hover, .size-btn:hover { background: var(--hover); color: var(--ink); }
 .icon-btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
-.drag-handle { cursor: grab; }
+.drag-handle {
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
 .drag-handle:active { cursor: grabbing; }
 .is-dragging { opacity: 0.55; }
 .drag-over { outline: 2px dashed var(--accent); outline-offset: 2px; }

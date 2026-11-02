@@ -80,8 +80,11 @@ func (s *Server) chatTurn(w http.ResponseWriter, r *http.Request) {
 	err := s.App.RunChatTurn(r.Context(), r.PathValue("id"), body.Text, func(ev core.ChatEvent) error {
 		if !started {
 			w.Header().Set("Content-Type", "application/x-ndjson")
-			w.Header().Set("Cache-Control", "no-store")
+			// no-transform asks intermediaries not to buffer the chunked body.
+			// Firefox and Safari stream fetch() bodies when each event is flushed.
+			w.Header().Set("Cache-Control", "no-cache, no-store, no-transform")
 			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.Header().Set("X-Accel-Buffering", "no")
 			w.WriteHeader(http.StatusOK)
 			started = true
 		}

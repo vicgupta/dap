@@ -138,8 +138,8 @@ Pick one:
 
      xattr -dr com.apple.quarantine DAP.app
 
-The window needs Google Chrome or Microsoft Edge for the chromeless app
-window. If neither is installed, DAP opens the URL in your default browser.
+da run opens the URL in the default browser. Chrome is not required.
+da run --no-browser only prints the URL.
 
 Plugins
 -------
@@ -236,7 +236,7 @@ Direct downloads are on this release. Apple Silicon: \`DAP-${version}-macos-arm6
 
 Gatekeeper, if macOS blocks the first open: right-click DAP.app > Open; or System Settings > Privacy & Security > Open Anyway; or \`xattr -dr com.apple.quarantine DAP.app\`.
 
-The chromeless window needs Google Chrome or Microsoft Edge. Otherwise DAP opens your default browser. Example plugins need Python 3. Gmail and Outlook need an OAuth client id. See docs/release.md.
+da run opens the URL in the default browser. Chrome is not required. Example plugins need Python 3. Gmail and Outlook need an OAuth client id. See docs/release.md.
 EOF
 
 echo "Artifacts in ${out}"

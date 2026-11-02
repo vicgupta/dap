@@ -5,3 +5,9 @@ node_modules/
 .dap/
 *.out
 coverage.txt
+e2e/node_modules/
+e2e/bin/
+e2e/test-results/
+e2e/playwright-report/
+e2e/artifacts/
+e2e/.servers.json

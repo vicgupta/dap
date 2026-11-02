@@ -58,8 +58,8 @@ It installs /usr/bin/da, /usr/bin/dap, and /usr/share/dap/plugins.
 
   sudo dpkg -i dap_${deb_version}_amd64.deb
 
-The chromeless window needs Google Chrome, Chromium, or Microsoft Edge.
-Otherwise dap opens the URL with xdg-open.
+dap opens the URL in the default browser (xdg-open). Chrome is not required.
+da run --no-browser only prints the URL.
 
 Example plugins:
 

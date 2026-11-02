@@ -173,7 +173,7 @@ Quit in the sidebar, `da quit`, `da stop`, `SIGINT`, and `SIGTERM` share one pat
 4. The process is stopped. A `plugin.stop` row is appended.
 5. The ledger is fsynced and closed. `state.json` is written and fsynced.
 6. `run.json` is removed and `dap.lock` is released.
-7. The HTTP server stops and the process exits 0. The page shows "DAP has quit. You can close this window." and tries to close itself. The chromeless window's browser process is stopped when DAP started it.
+7. The HTTP server stops and the process exits 0. The page shows "DAP has quit. You can close this window." and tries to close itself. The default browser is not stopped.
 
 The confirm reads "Quit DAP? Scheduled agents stop running until you open DAP again." It is skipped when no plugin is running and nothing is in flight. If an approved action is executing, or a plugin call is in progress, the confirm says so.
 
@@ -192,7 +192,6 @@ Mode `0700` on the directory. JSON state files are mode `0600`.
 | `dap.lock` | Exclusive lock held by `da serve` / `da run` and by a one-shot command. |
 | `run.json` | While the server is up: `pid`, `addr`, `token`, `started`. Removed on a clean shutdown, before the lock is released. Mode `0600`. |
 | `plugin-data/<name>/` | The `data_dir` passed to `initialize`. |
-| `browser-profile/` | Private Chrome, Edge, or Chromium profile for the `da run` window. Quit can close that process without closing other browser windows. |
 | `mail/public.json` | Direct-path client ids and the composio/direct choice. Not a token and not the Composio API key. Mode `0600`. |
 | `mail/fake.json` | Demo mailbox threads and connection flag. |
 | `chat/sessions/<id>.json` | One chat transcript. Mode `0600`. |
@@ -207,7 +206,7 @@ Mode `0700` on the directory. JSON state files are mode `0600`.
 go test ./...
 ```
 
-`make test` is the same. Tests do not need a display, a keychain, or a network. They use the file secret store, temporary data directories, and the Python example plugins (so Python 3 has to be on `PATH` for `internal/core` and `internal/pluginhost`).
+`make test` is the same. Browser end-to-end tests live in `e2e/` and run the UI in Chromium, Firefox, and WebKit (`cd e2e && npm test`). The Go tests do not need a display, a keychain, or a network. They use the file secret store, temporary data directories, and the Python example plugins (so Python 3 has to be on `PATH` for `internal/core` and `internal/pluginhost`).
 
 What they cover:
 
@@ -225,7 +224,7 @@ What they cover:
 
 ## Limitations
 
-- The window is a browser, not a native webview. With no Chrome, Edge, or Chromium, Linux and macOS fall back to the system browser. Closing that window does not stop `da`. Quit, `da quit`, and Ctrl+C do. The Quit page says DAP has quit and asks the window to close; a chromeless app window is also stopped with the process when DAP launched it.
+- The window is the default browser, not a native webview and not a private Chrome profile. Closing that tab does not stop `da`. Quit, `da quit`, and Ctrl+C do. The Quit page says DAP has quit and asks the tab to close. `da run --no-browser` only prints the URL.
 - The admin token is in the HTML of the loopback page and in `run.json`. That is the whole of admin authentication.
 - Plugin UI isolation is a separate loopback origin, a bearer token, and Content-Security-Policy. It is not an OS sandbox.
 - macOS keychain writes pass the secret on `security`'s argv. Use `DAP_SECRETS=file` if that matters. Linux `secret-tool` can block on a keyring prompt until the 3 second timeout, and then the file backend is used.

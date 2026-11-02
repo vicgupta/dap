@@ -2,7 +2,9 @@ package oauth
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -122,6 +124,103 @@ func TestRefreshKeepsRefreshToken(t *testing.T) {
 	}
 	if tok.AccessToken != "at-2" || tok.RefreshToken != "rt-keep" {
 		t.Fatalf("%+v", tok)
+	}
+}
+
+func TestAuthorizeLoopbackAcceptsIPv4AndIPv6(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"at","refresh_token":"rt","expires_in":60}`))
+	}))
+	defer srv.Close()
+
+	var redirect string
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err := Authorize(ctx, Config{
+		ClientID:     "client",
+		AuthURL:      srv.URL + "/auth",
+		TokenURL:     srv.URL + "/token",
+		RedirectHost: "localhost",
+		Scopes:       []string{"read"},
+		Open: func(u string) error {
+			parsed, err := url.Parse(u)
+			if err != nil {
+				return err
+			}
+			redirect = parsed.Query().Get("redirect_uri")
+			cb, err := url.Parse(redirect)
+			if err != nil {
+				return err
+			}
+			if cb.Hostname() != "localhost" {
+				return fmt.Errorf("redirect host %s", cb.Hostname())
+			}
+			for _, host := range []string{"127.0.0.1", "::1"} {
+				probe := &url.URL{Scheme: "http", Host: net.JoinHostPort(host, cb.Port()), Path: "/"}
+				resp, err := getRetry(probe.String())
+				if err != nil {
+					if host == "::1" {
+						continue
+					}
+					return err
+				}
+				resp.Body.Close()
+			}
+			cb.RawQuery = url.Values{"code": {"abc"}, "state": {parsed.Query().Get("state")}}.Encode()
+			resp, err := getRetry(cb.String())
+			if err != nil {
+				return err
+			}
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				return fmt.Errorf("callback status %d", resp.StatusCode)
+			}
+			if resp.Header.Get("Set-Cookie") != "" {
+				return fmt.Errorf("callback set a cookie")
+			}
+			if !strings.Contains(string(body), "Signed in") {
+				return fmt.Errorf("body %s", body)
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(redirect, "http://localhost:") {
+		t.Fatalf("redirect %s", redirect)
+	}
+}
+
+func getRetry(raw string) (*http.Response, error) {
+	var last error
+	for i := 0; i < 25; i++ {
+		resp, err := http.Get(raw)
+		if err == nil {
+			return resp, nil
+		}
+		last = err
+		time.Sleep(20 * time.Millisecond)
+	}
+	return nil, last
+}
+
+func TestOpenFailureIncludesURL(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err := Authorize(ctx, Config{
+		ClientID: "client",
+		AuthURL:  "http://127.0.0.1:9/auth",
+		TokenURL: "http://127.0.0.1:9/token",
+		Scopes:   []string{"read"},
+		Open: func(u string) error {
+			return fmt.Errorf("browser missing")
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "http://127.0.0.1:") || !strings.Contains(err.Error(), "browser missing") {
+		t.Fatal(err)
 	}
 }
 

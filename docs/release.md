@@ -118,7 +118,7 @@ sudo dpkg -i dap_*_amd64.deb
 
 Use the arm64 deb on arm64. Plugins from the package are in `/usr/share/dap/plugins`.
 
-The chromeless window needs Google Chrome, Chromium, or Microsoft Edge. Otherwise `dap` opens the URL with `xdg-open`.
+`dap` opens the URL in the default browser (`xdg-open` on Linux). Chrome is not required. `--no-browser` only prints the URL.
 
 ### Windows
 
@@ -142,7 +142,7 @@ In PowerShell, from the folder that contains the exe:
 Unblock-File .\da.exe
 ```
 
-`install.ps1` already unblocks the copy it writes. A browser download can still mark the zip with a Mark-of-the-Web (`Zone.Identifier`). SmartScreen can show **Windows protected your PC** the first time an unsigned exe runs. **More info**, then **Run anyway**, does not grant administrator rights. The chromeless window needs Microsoft Edge or Google Chrome. Otherwise DAP opens the default browser.
+`install.ps1` already unblocks the copy it writes. A browser download can still mark the zip with a Mark-of-the-Web (`Zone.Identifier`). SmartScreen can show **Windows protected your PC** the first time an unsigned exe runs. **More info**, then **Run anyway**, does not grant administrator rights. DAP opens the default browser. Chrome and Edge are not required.
 
 ## After install
 
@@ -166,7 +166,7 @@ A later tag stamps the label with `-ldflags` and `da version` prints `version` `
 
 ## Known issues
 
-The chromeless window needs Chrome or Edge. On Linux, Chromium counts. If none of those is installed, DAP opens the default browser (`open`, `xdg-open`, or `cmd /c start`).
+DAP opens the default browser (`open` on macOS, `rundll32 url.dll,FileProtocolHandler` on Windows, `xdg-open` on Linux). A machine with only Firefox, Brave, or Safari still gets the UI. `da run --no-browser` prints the URL and does not launch anything.
 
 Two `da` processes cannot use the same data directory at once.
 

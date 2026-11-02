@@ -125,8 +125,10 @@ func Run(ctx context.Context, req Request) error {
 	wg.Add(2)
 	go stream(stdout)
 	go stream(stderr)
-	waitErr := cmd.Wait()
+	// StdoutPipe is closed by Wait. Finish the reads first so a fast
+	// process cannot lose its output when the machine is busy.
 	wg.Wait()
+	waitErr := cmd.Wait()
 	if ctx.Err() != nil {
 		killProc(cmd)
 		return ctx.Err()

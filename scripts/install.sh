@@ -139,4 +139,4 @@ echo "This installer does not change PATH and does not use sudo."
 echo "To run da from any folder, add this directory to PATH yourself:"
 echo "  export PATH=\"${dest}:\$PATH\""
 echo
-echo "The window needs Google Chrome or Microsoft Edge (or Chromium on Linux). Otherwise ./da run opens the default browser."
+echo "./da run opens the URL in the default browser. Chrome is not required. ./da run --no-browser only prints the URL."
