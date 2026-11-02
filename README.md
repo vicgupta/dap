@@ -1,280 +1,179 @@
 # DAP
 
-DAP (Dashboard Agent Platform) is a local-first desktop app for building, running, approving, and measuring personal agents. Your own coding agent (Claude Code, Codex, or OpenCode) does the thinking. DAP is the interface, the contract, and the safety rails. Everything runs on your laptop.
+DAP (Dashboard Agent Platform) is a local-first app for running personal agents on your laptop. Your coding agent (Claude Code, Codex, or OpenCode) can do the thinking later. This repository is the core (the interface, the plugin contract, and the safety rails) plus inbox follow-ups and the mail connections those follow-ups use.
 
-This repository is the **core and the plugin system**. It does not include the inbox follow-ups plugin or any Gmail or Microsoft Graph integration.
+Core version: `0.1.0` (`internal/version`). Go `1.22` or newer.
 
-## Architecture
+| Read | For |
+| --- | --- |
+| [docs/architecture.md](docs/architecture.md) | Process model, window, tokens, scoped API |
+| [docs/cli.md](docs/cli.md) | Every `da` command, flag, exit code, and example |
+| [docs/plugins.md](docs/plugins.md) | `plugin.yaml`, the five-step interface, authoring in any language |
+| [docs/runtime.md](docs/runtime.md) | Scheduler, inbox, guardrails, ledger, secrets, doctor, data directory, limitations |
+| [docs/layout.md](docs/layout.md) | Home and inbox card layouts, density, and the plugin contract |
+| [docs/theme.md](docs/theme.md) | System, Light, and Dark, and how plugin pages follow them |
+| [docs/inbox-followups.md](docs/inbox-followups.md) | Follow-ups watcher, Connections, Gmail and Outlook sign-in |
+| [docs/release.md](docs/release.md) | Release install, Gatekeeper, SmartScreen, checksums |
 
+## Install the macOS pre-release
+
+[v0.1.0-alpha.1](https://github.com/vicgupta/dap/releases/tag/v0.1.0-alpha.1) is a private GitHub pre-release: Apple Silicon, Intel, and a universal `DAP.app`, plus `da` CLI tarballs. The repo stays private, so these links open only when you are logged into GitHub.
+
+One-time:
+
+```bash
+gh auth login
 ```
-browser or app window
-        │  http://127.0.0.1  (admin token)
-        ▼
-┌──────────────────────────────────────────────┐
-│  da                                          │
-│  scheduler · decision inbox · guardrails     │
-│  append-only ledger · plugin host · secrets  │
-└───────────┬────────────────────┬─────────────┘
-            │ JSON-RPC over stdio │ scoped HTTP + bearer token
-            ▼                     ▼
-     plugin process          plugin process
-     (any language)          (any language)
-            │
-            ▼
-     /plugins/<name>/  → its own loopback origin
+
+Then:
+
+```bash
+gh release download v0.1.0-alpha.1 --repo vicgupta/dap --pattern install.sh && sh install.sh
 ```
 
-One plugin or many run at the same time. Each is its own OS process. A plugin that is waiting on you does not block the others.
+`install.sh` uses that `gh` login. It checks SHA256, installs `DAP.app` and `da`, and clears the quarantine flag. Double-click `DAP.app` to run `da run`. Data stays in `~/.dap` (or `$DAP_HOME`).
 
-### Why a single Go binary, not Wails
+Direct downloads:
 
-`da` is one Go binary. It embeds the web UI and serves it on `127.0.0.1`. `da run` opens that UI in a chromeless window (Chrome or Edge `--app`, then the system browser). The same binary is `da serve` if you want a normal browser tab.
+| File | Use |
+| --- | --- |
+| [DAP-0.1.0-alpha.1-macos-arm64.zip](https://github.com/vicgupta/dap/releases/download/v0.1.0-alpha.1/DAP-0.1.0-alpha.1-macos-arm64.zip) | Apple Silicon app |
+| [DAP-0.1.0-alpha.1-macos-amd64.zip](https://github.com/vicgupta/dap/releases/download/v0.1.0-alpha.1/DAP-0.1.0-alpha.1-macos-amd64.zip) | Intel app |
+| [DAP-0.1.0-alpha.1-macos-universal.zip](https://github.com/vicgupta/dap/releases/download/v0.1.0-alpha.1/DAP-0.1.0-alpha.1-macos-universal.zip) | Both CPUs |
+| [da-0.1.0-alpha.1-darwin-arm64.tar.gz](https://github.com/vicgupta/dap/releases/download/v0.1.0-alpha.1/da-0.1.0-alpha.1-darwin-arm64.tar.gz) | Apple Silicon CLI |
+| [da-0.1.0-alpha.1-darwin-amd64.tar.gz](https://github.com/vicgupta/dap/releases/download/v0.1.0-alpha.1/da-0.1.0-alpha.1-darwin-amd64.tar.gz) | Intel CLI |
+| [da-0.1.0-alpha.1-darwin-universal.tar.gz](https://github.com/vicgupta/dap/releases/download/v0.1.0-alpha.1/da-0.1.0-alpha.1-darwin-universal.tar.gz) | Universal CLI |
+| [checksums.txt](https://github.com/vicgupta/dap/releases/download/v0.1.0-alpha.1/checksums.txt) | SHA256 |
 
-Wails (and other native webview bindings) need CGO and a platform webview SDK at compile time: WebKitGTK on Linux, WebView2 on Windows, WKWebView on macOS. That makes `go build` fail on a machine that does not have those SDKs, and it makes cross-compilation painful. The product is the local API, the contract, and the guardrails. The window is a shell. Packaging a native webview later does not require changing plugins.
+Gatekeeper, checksum checks, and the example plugins: [docs/release.md](docs/release.md).
 
-### Why plugins are processes speaking JSON-RPC
+The same `gh release download` command works for any single file:
 
-Plugins are separate processes. The core sends one JSON-RPC 2.0 message per line on the plugin's stdin and reads one response per line from stdout. Logs go to stderr.
+```bash
+gh release download v0.1.0-alpha.1 --repo vicgupta/dap --pattern DAP-0.1.0-alpha.1-macos-arm64.zip
+```
 
-That isolation is real: a plugin cannot read another plugin's memory, and a crash stops only that plugin. Any language that can read and write a line of JSON can implement the contract. The two examples are Python; a Go or JavaScript plugin is the same protocol.
+## Linux and Windows
 
-Callbacks (log, tile, propose, check, outcome, the plugin's own scratch state) go to a scoped HTTP API on `127.0.0.1`, authenticated with a bearer token minted for that plugin. The token cannot call another plugin's API or the admin API. Keeping callbacks off the stdio stream means the protocol stays request/response, which is easy to implement correctly.
+v0.1.0-alpha.1 does not include Linux or Windows archives. After this packaging change is on `main`, the next `v*` tag builds them. `install.sh` on Linux and `install.ps1` on Windows use `gh release download` and check SHA256. Neither script embeds a token.
 
-In-process Go plugins would lock the language and share the core's address space. Containers are a lot of machinery for a personal agent on a laptop.
+```bash
+gh release download <tag> --repo vicgupta/dap --pattern install.sh && sh install.sh
+```
 
-### The five-step contract
+```powershell
+gh release download <tag> --repo vicgupta/dap --pattern install.ps1
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
 
-Interface id: `dap.plugin.v1`. The core tells the plugin which interface it is speaking. A future core keeps accepting `dap.plugin.v1` so today's plugins keep loading.
+Those tags publish `da-<version>-linux-amd64.tar.gz`, `da-<version>-linux-arm64.tar.gz`, `dap_<version>_amd64.deb` and the arm64 deb (Debian version uses `~` in place of the pre-release hyphen), and `DAP-<version>-windows-amd64.zip`. Names and SmartScreen steps are in [docs/release.md](docs/release.md).
 
-| Step | Who calls | What it does |
-| --- | --- | --- |
-| `initialize` | core, at start and after an approved config change | Load config. Return `ready` and a health status. |
-| `watch` | core, each run | Return observations since the last run, and the home tile. |
-| `propose` | core, after watch | Return decision cards. |
-| `act` | core, only after guardrails pass and the card is approved | Do the thing. Return a result and evidence. |
-| `report` | core, end of a run | Return metrics. |
+## Run
 
-`act` is never called for a card that sends, spends, or deletes until you approve it. A change to a plugin's own config or rules is a change card and is applied only after approval. Pending cards do not block the scheduler.
-
-### Guardrails
-
-Every action is `allowed`, `ask first`, or `never`.
-
-- A permission the manifest did not declare is `never`.
-- A declared permission is `allowed` or `ask first`, as the manifest says.
-- **Sends, spends, and deletes always wait for an approved card**, even when the permission itself is `allowed`.
-- You can tighten a permission (down to `never`). You cannot loosen one.
-- Change cards always wait, even when their permission is `allowed`.
-
-### Scheduler
-
-A plugin schedule is an interval (`every: 15m`), a five-field cron expression, or a clock time (`at: 08:00` with `daily`, `weekdays`, or `weekly`). If the laptop slept, or DAP was not running, the missed slot is labeled in the ledger and on Home. DAP catches up **once**. It does not replay every skipped interval and pretend they ran on time.
-
-### Ledger and secrets
-
-`ledger.jsonl` in the data directory is append-only. There is no update and no delete. Evidence refs live on the row.
-
-Secrets use a `Keeper` interface. On macOS it uses the login keychain (`security`). On Windows it uses Credential Manager (`CredWrite`). On Linux it uses Secret Service (`secret-tool`) when that answers. Otherwise secrets sit in `secrets.json` with mode `0600`. Set `DAP_SECRETS=file` to force the file, or `DAP_SECRETS=os` to require the OS store. Plugin secrets are namespaced `dap.plugin.<name>`, and the API only allows them when the manifest declares `secrets.read` or `secrets.write`.
-
-### Plugin web UI
-
-A plugin may ship an `ui` block. DAP serves it on its own loopback port and links it as `/plugins/<name>/`. That origin is not the admin origin, so the page cannot read the admin token. Its JavaScript receives only the plugin token, and the only API it can call is that plugin's.
-
-## Run it
-
-Requires Go 1.22+ and, for the example plugins, Python 3.
-
-### Linux, macOS, and Windows
+Supported operating systems: macOS, Windows, and Linux. The binary is pure Go. Example plugins need Python 3 (`python3` on macOS and Linux; `python` or `py` on Windows).
 
 ```bash
 go build -o da ./cmd/da          # Windows: go build -o da.exe ./cmd/da
-./da init                        # creates ~/.dap  (or %USERPROFILE%\.dap)
+./da init                        # ~/.dap, or %USERPROFILE%\.dap
 ./da plugin install ./plugins/hello-watch --approve
 ./da plugin install ./plugins/workflow --approve
 ./da doctor
-./da run                         # serves the UI and opens a window
+./da run                         # serve the UI and open a window
 ```
 
-`da serve` is the same server without opening a window. Open the printed URL.
+`make build`, `make test`, and `make run` do the same build, `go test ./...`, and `./da run`.
 
-Data directory: `~/.dap`, or `$DAP_HOME`, or `--data <dir>`.
+`da serve` is the same server without opening a window. Open the `url` it prints. Default address is `127.0.0.1:7391`. The listener is forced onto loopback (`0.0.0.0` and `::` become `127.0.0.1`).
 
-The UI:
+Data directory, first match: `--data <dir>`, `--data=<dir>`, `$DAP_HOME`, then `~/.dap`.
 
-- **Home** — every plugin, health, last run, next run, pending count, missed-run banner.
-- **Decision inbox** — `j`/`k` move, `a` approve, `e` edit, `r` reject, `s` snooze.
-- **Activity** — the ledger.
-- **Guardrails** — the baked-in rules, each permission, and recent checks. You can tighten a permission to never.
-- **Plugins** — install (permissions are shown in plain language before anything is installed), health, and the plugin's web UI.
+## Architecture
 
-The top bar has a theme control on every screen: sun for Light, moon for Dark, monitor for System. System is the default. It follows the OS (`prefers-color-scheme`) and updates when that setting changes. The choice is stored in the browser (`localStorage` key `dap.theme`) and in `config.json` (`theme`), and the page sets `data-theme` before the stylesheet loads. See [docs/theme.md](docs/theme.md).
+`da` is one Go binary. It embeds the web UI and serves it on `127.0.0.1`. `da run` opens that URL in a chromeless window. It tries, in order:
 
-`workflow` includes a step editor. Saving it creates a change card. The new steps apply only after you approve that card. A step marked sends, spends, or deletes pauses in the inbox; the steps before it run.
-
-## CLI
-
-Every command prints JSON. Send JSON on stdin where noted.
-
-```bash
-da init
-da serve --addr 127.0.0.1:7391
-da run
-da doctor
-da plugin install --approve ./plugins/hello-watch
-da plugin list
-da plugin remove hello-watch
-da plugin approve hello-watch          # after a manifest asks for a new permission
-da context --plugin workflow
-echo '{"plugin":"hello-watch","title":"Note","permission":"demo.greet","kind":"action"}' | da propose
-da approved
-echo '{"plugin":"hello-watch","permission":"mail.send","effects":["sends"]}' | da check
-da log
-echo '{"plugin":"hello-watch","message":"noted"}' | da log
-echo '{"plugin":"hello-watch","card_id":"c_…","summary":"sent the note"}' | da outcome
-echo '{"plugin":"hello-watch","title":"Hello","status":"ok","lines":[{"label":"Ticks","value":"1"}]}' | da tile write
-```
-
-`da propose` from the CLI creates an external card. Approving it does not call the plugin's `act`; the caller records the result with `da outcome`. Cards proposed by a plugin are acted on by the core after approval.
-
-`da check` returns `allowed`, `ask_first`, or `never`. A `never` is also an error on the plugin HTTP API (403). `ask_first` means "not yet" — propose a card.
-
-While `da serve` is running, other commands talk to it. Otherwise they open the data directory directly.
-
-## Plugin authoring
-
-A plugin is a folder with a `plugin.yaml` and an entrypoint. Drop it anywhere and install it; DAP does not need to be rebuilt.
-
-### Manifest
-
-```yaml
-name: competitor-research          # lowercase, digits, hyphens
-version: 0.1.0                     # semver
-min_dap_version: 0.1.0             # this core is 0.1.0
-type: watcher                      # watcher | capability | workflow
-interface: dap.plugin.v1
-description: Compare public pages.
-entrypoint: plugin.py              # a .py file is run with python3; or an argv list
-dependencies:
-  - web-watch ^0.3                 # or {name, version}. Loaded first. Ranges: ^ ~ >= exact *
-permissions:
-  - name: web.read
-    mode: allowed                  # allowed | ask_first  ("ask first" is accepted)
-    description: Read public pages
-  - name: share.team
-    mode: ask_first
-    description: Share with the team
-provides: [alerts, brief]
-config:
-  - key: every
-    type: duration                 # string | number | bool | duration | list
-    default: 1h
-schedule: every 2h                 # or cron / at. See below.
-ui:                                # optional
-  entry: ui/index.html
-  route: /plugins/competitor-research/
-  title: Comparison board
-```
-
-A compact permission map is also accepted: `web.read: allowed`, `share.team: ask first`. Any other text is treated as the description and the mode defaults to ask first, which is the safer direction.
-
-Schedule forms:
-
-- `every: 15m` — Go duration, minimum 5s (`30s`, `15m`, `2h`)
-- `cron: "0 8 * * 1"` — five fields, minute hour day month weekday
-- `at: "08:00"` plus `recurrence: daily | weekdays | weekly` and, for weekly, `day: mon`
-
-On install, DAP validates the manifest, checks dependency versions, shows each permission in plain language, and installs nothing until you approve. A later edit that adds a permission or loosens a mode will not start until you approve it again (`da plugin approve` or the Plugins page).
-
-### Protocol `dap.plugin.v1`
-
-Newline-delimited JSON-RPC 2.0 on stdin/stdout. Unknown methods should return a JSON-RPC error. Do not print anything else on stdout.
-
-`initialize` params:
-
-```json
-{
-  "interface": "dap.plugin.v1",
-  "dap_version": "0.1.0",
-  "config": {},
-  "plugin_dir": "/path/to/plugin",
-  "data_dir": "/path/to/plugin-data",
-  "api_base": "http://127.0.0.1:12345/v1/your-plugin",
-  "token": "…"
-}
-```
-
-Result: `{"ready": true, "interface": "dap.plugin.v1", "health": {"status": "ok", "message": "Ready"}}`.
-
-`watch` params: `{"since": "<RFC3339 or null>"}`. Result: `{"observations": [{"id","at","summary"}], "tile": {"title","status","lines":[{"label","value"}]}}`.
-
-`propose` params: `{"observations": [...]}`. Result: `{"cards": [CardDraft]}`. A card draft:
-
-```json
-{
-  "title": "Draft the team note",
-  "summary": "This step sends.",
-  "body": "The note.",
-  "kind": "action",
-  "permission": "share.team",
-  "effects": ["sends"],
-  "editable": true,
-  "payload": {"step_id": "draft"},
-  "evidence": [{"label": "Step", "ref": "draft"}]
-}
-```
-
-`kind` is `action` or `change`. A change card's payload is `{"config": {...}}` and, optionally, `{"schedule": {...}}`. Effects are only `sends`, `spends`, and `deletes`.
-
-`act` params: `{"card": {...}}` including the id, the edited text, and `status: "acting"`. Result: `{"status": "done", "summary": "…", "evidence": [...]}`.
-
-`report` params: `{"period": "week", "from": "…", "to": "…"}`. Result: `{"metrics": [{"key","label","value"}]}`.
-
-### Scoped API
-
-Base URL and token come from `initialize`. Send `Authorization: Bearer <token>`.
-
-| Method | Path | Purpose |
+| OS | First choices | Fallback |
 | --- | --- | --- |
-| GET | `/context` | This plugin's config, schedule, scratch state, open cards |
-| GET | `/cards` | This plugin's cards |
-| GET/PUT | `/state` | Scratch JSON. Not a permission; it is not a side effect |
-| POST | `/log` | Append a ledger row |
-| POST | `/tile` | Replace the home tile |
-| POST | `/propose` | Enqueue a card. Does not act |
-| POST | `/check` | `{"permission","effects","card_id"}` → `allowed` / `ask_first` / `never` |
-| POST | `/call` | Same as check. 403 unless the decision is `allowed` |
-| POST | `/outcome` | Record a result for a card you own |
-| POST | `/secret/set` `/secret/get` `/secret/delete` | Only if `secrets.write` / `secrets.read` is declared |
+| macOS | Google Chrome `--app`, Microsoft Edge `--app` | `open` |
+| Windows | `msedge --app`, `chrome --app` | `cmd /c start` |
+| Linux | `google-chrome`, `google-chrome-stable`, `chromium`, `chromium-browser`, each with `--app` | `xdg-open` |
 
-A call the manifest did not declare is denied. Pass `card_id` only for a card of this plugin that is approved (or currently being acted on) and whose effects cover the call.
+Wails and other native webviews need CGO and a platform SDK at compile time (WebKitGTK, WebView2, or WKWebView). `go build` would then fail on a machine without that SDK. The window is a shell. Plugins talk to the local API, so a native webview can be added later without changing them.
 
-The optional web UI is a folder of static files. `ui.entry` is the HTML file. DAP injects `<meta name="dap-token">`, `dap-api`, `dap-inbox`, `dap-plugin`, and `dap-theme`. Talk to `dap-api` (`/api/...`) with the token. The page is a separate origin. Honor the theme with `?theme=`, `data-theme`, and the sandbox's `/theme.css` and `/theme-boot.js` (load the script before any stylesheet). Details are in [docs/theme.md](docs/theme.md). `plugins/workflow/ui` is a working editor that does this.
+```
+window or browser tab
+        │  http://127.0.0.1   admin token
+        ▼
+┌─────────────────────────────────────────────┐
+│ da                                          │
+│ scheduler · inbox · guardrails · ledger     │
+│ plugin host · secret store                  │
+└───────┬──────────────────────┬──────────────┘
+        │ JSON-RPC lines       │ scoped HTTP
+        ▼                      ▼
+  plugin process         plugin process
+```
 
-## Examples
+Several plugins run at once. Each is its own OS process. A card waiting for you does not stop the others.
 
-- `plugins/hello-watch` — a watcher. Each run proposes "Say hello". Nothing is sent. Approving writes the result to the ledger.
-- `plugins/workflow` — a workflow. "Pull the digest" runs on its own. "Draft the team note" sends, so it waits. "Save the summary" runs after you approve. Both plugins run as separate processes at the same time.
+Plugins speak JSON-RPC 2.0, one JSON object per line, on stdin and stdout. Logs go to stderr. The core is the client and calls `initialize`, `watch`, `propose`, `act`, and `report`. Plugins call back on a loopback HTTP API with a bearer token minted for that plugin. That token cannot call another plugin or the admin API.
 
-## Development
+A plugin with a `ui` block is served on its own `127.0.0.1` port. The core route `/plugins/<name>/` redirects there. The page gets only that plugin's token (`dap-token`, `dap-api`, `dap-plugin`, `dap-inbox`) plus `dap-theme` and `dap-density`. Its content security policy sets `frame-ancestors 'none'`.
+
+## UI
+
+- **Appearance.** The top bar has System, Light, and Dark. System follows the OS. The choice is in `localStorage` (`dap.theme`) and `config.json` (`theme`). See [docs/theme.md](docs/theme.md).
+- **Home.** Every plugin, health, last run, next run, pending count, missed-run line. Grid, list, or board. Tile size is small, medium, or large.
+- **Decision inbox.** `j` / `k` or the arrow keys move. `a` approves, `e` edits, `r` rejects, `s` snoozes. Shortcuts are ignored while a field is focused. Snooze offers 1 hour, 4 hours, or tomorrow at 08:00 local. Reject asks for a reason. Edit changes the title, summary, and body. List, grid, board (one column per plugin), or a split list and detail. Approve and Reject stay on the card in every layout.
+- **Activity.** The ledger, newest first.
+- **Guardrails.** The baked-in rules, each permission's effective mode, and recent checks. A control can tighten a permission. It cannot loosen one.
+- **Plugins.** Review permissions in plain language, approve the install, see health, open a plugin UI, or remove a plugin.
+- **Connections.** Demo mailbox, Gmail, and Outlook. Setup is in [docs/inbox-followups.md](docs/inbox-followups.md).
+
+## Safety rules
+
+Every check is `allowed`, `ask_first`, or `never`.
+
+- A permission the manifest does not declare is `never`.
+- A declared permission is `allowed` or `ask_first`.
+- Anything that **sends, spends, or deletes** waits for an approved card, even when the permission mode is `allowed`.
+- A plugin changes its own config or rules with a `change` card. The core applies it only after approval, then calls `initialize` again. If that call fails, the previous config is restored.
+- You can tighten a rule (`allowed` → `ask_first` → `never`). An override cannot make a rule looser than the manifest.
+- During a run, the core may act immediately on a plugin card that is `allowed` and has no send, spend, or delete. Cards submitted over HTTP or `da propose` wait in the inbox. `da propose` creates an external card: approval does not call the plugin's `act`. Finish it with `da outcome`.
+
+There are no operating-system notifications. Mail leaves the machine only through the host mail broker, and only after an approved card. Pending cards never block a plugin.
+
+## Scheduler
+
+A schedule is one of `every` (Go duration, at least `5s`), a five-field cron expression, or `at: "HH:MM"` with `daily`, `weekdays`, or `weekly`. The scheduler ticks once a second. A run up to 2 minutes late still counts as on time. Later than that, DAP records a missed run ("DAP was not running or the laptop was asleep"), runs **once**, and schedules the next future slot. It does not replay the skipped slots. An on-time success clears the missed banner. A manual run does not.
+
+## Ledger, secrets, doctor
+
+`ledger.jsonl` is append-only. Rows are JSON lines. There is no update and no delete. Kinds the core writes include `plugin.install`, `plugin.remove`, `plugin.start`, `schedule.run`, `schedule.missed`, `card.proposed`, `card.approved`, `card.edited`, `card.rejected`, `card.snoozed`, `card.acted`, `card.blocked`, `card.failed`, `config.applied`, `guardrail.check`, `permission.denied`, `plugin.log`, `tile.write`, and `outcome`.
+
+Secrets use a `Keeper`. `DAP_SECRETS=file` forces `secrets.json` (mode `0600`). `DAP_SECRETS=os` requires the OS store. The default, `auto`, uses the OS store when a probe succeeds:
+
+| OS | Store | Tool |
+| --- | --- | --- |
+| macOS | login keychain | `security` (`-w` puts the secret on the process argv for that call) |
+| Windows | Credential Manager | `CredWrite` / `CredRead` / `CredDelete` |
+| Linux | Secret Service | `secret-tool`, 3 second timeout |
+
+Plugin secrets are stored as service `dap.plugin.<name>` and the HTTP API allows them only when the manifest declares `secrets.read` or `secrets.write`.
+
+`da doctor` checks the data directory, the ledger, the secret backend, dependency order, each plugin's next run, health, and permission approval, and whether `claude`, `codex`, and `opencode` are on `PATH`. Missing agents are informational and do not fail the command. A plugin that is down or waiting on permission approval does. The command prints JSON and exits `1` when `ok` is false. If no server is running, doctor starts plugins for the check and then stops them.
+
+## Plugins in this repo
+
+- `plugins/hello-watch` is a watcher. Every 15 minutes it proposes "Say hello". The permission `demo.greet` is ask-first, and the card does not send. Approving it writes the result to the ledger.
+- `plugins/workflow` is a workflow with a step editor at `/plugins/workflow/`. "Pull the digest" is allowed and runs. "Draft the team note" sends, so it waits. "Save the summary" runs after that approval. Saving the step list creates a change card.
+- `plugins/mail-fake`, `plugins/mail-gmail`, and `plugins/mail-graph` are mailbox capabilities. `plugins/inbox-followups` proposes drafts. Approving a card is what sends it. See [docs/inbox-followups.md](docs/inbox-followups.md).
+
+Install does not copy the folder. DAP records the absolute path and runs the package in place. A dependency must already be installed, and its version must satisfy the range. Adding a permission, or loosening a mode, requires `da plugin approve <name>` or the Plugins page before that plugin starts again.
+
+## Test
 
 ```bash
 go test ./...
-go build -o da ./cmd/da
 ```
 
-Tests cover manifest validation (including the shorthand from the design sketches), dependency order, permission decisions, guardrail overrides, the send/spend/delete rule, the scheduler (cron, weekdays, missed-run catch-up), the append-only ledger, the secret file store, the JSON-RPC lifecycle, both example plugins running together, approval end to end, and the CLI.
-
-## Layout
-
-```
-cmd/da                  CLI entry
-internal/core           scheduler, inbox, guardrails, host wiring
-internal/pluginhost     process isolation and dap.plugin.v1
-internal/manifest       plugin.yaml
-internal/api            localhost UI and plugin sandbox
-internal/web            embedded UI
-plugins/hello-watch
-plugins/workflow
-```
-
-Inter is bundled under the SIL Open Font License (`internal/web/static/fonts/OFL.txt`).
+The tests cover manifest validation, dependency order, permissions, guardrails, the scheduler (including missed-run catch-up), the append-only ledger, the file secret store, JSON-RPC lifecycle, both example plugins running together, approve-and-act, the CLI, Gmail and Graph clients against mocked HTTP, PKCE sign-in with an incremental send scope, and the approval-gated demo send.

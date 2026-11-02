@@ -3,20 +3,24 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/vicgupta/dap/internal/core"
 	"github.com/vicgupta/dap/internal/guardrails"
+	"github.com/vicgupta/dap/internal/layout"
 	"github.com/vicgupta/dap/internal/model"
 	"github.com/vicgupta/dap/internal/theme"
 	"github.com/vicgupta/dap/internal/web"
@@ -100,6 +104,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /fonts/", http.StripPrefix("/fonts/", http.FileServer(http.FS(fonts))))
 	mux.HandleFunc("GET /theme.css", file(static, "theme.css"))
 	mux.HandleFunc("GET /theme-boot.js", file(static, "theme-boot.js"))
+	mux.HandleFunc("GET /layout.css", file(static, "layout.css"))
+	mux.HandleFunc("GET /layout-boot.js", file(static, "layout-boot.js"))
+	mux.HandleFunc("GET /layout-logic.js", file(static, "layout-logic.js"))
 	mux.HandleFunc("GET /app.css", file(static, "app.css"))
 	mux.HandleFunc("GET /app.js", file(static, "app.js"))
 	mux.HandleFunc("GET /favicon.svg", file(static, "favicon.svg"))
@@ -121,6 +128,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/plugins/{name}/approve", s.auth(s.approveManifest))
 	mux.HandleFunc("POST /api/plugins/{name}/run", s.auth(s.run))
 	mux.HandleFunc("GET /api/doctor", s.auth(s.doctor))
+	mux.HandleFunc("GET /api/connections", s.auth(s.connections))
+	mux.HandleFunc("POST /api/connections/{provider}/setup", s.auth(s.connectionSetup))
+	mux.HandleFunc("POST /api/connections/{provider}/connect", s.auth(s.connectionConnect))
+	mux.HandleFunc("POST /api/connections/{provider}/disconnect", s.auth(s.connectionDisconnect))
 	mux.HandleFunc("GET /api/approved", s.auth(s.approved))
 	mux.HandleFunc("GET /api/context", s.auth(s.context))
 	mux.HandleFunc("POST /api/propose", s.auth(s.propose))
@@ -140,14 +151,61 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mode := s.App.Theme()
+	prefs := s.App.Layout()
+	raw, _ := json.Marshal(prefs)
 	boot := `<meta name="dap-token" content="` + s.App.AdminToken() + `" />` +
 		`<meta name="dap-version" content="0.1.0" />` +
-		`<meta name="dap-theme" content="` + mode + `" />`
-	html := injectTheme(bytes.Replace(b, []byte("<!--DAP_BOOT-->"), []byte(boot), 1), mode)
+		`<meta name="dap-theme" content="` + mode + `" />` +
+		`<meta name="dap-density" content="` + prefs.PluginDensity() + `" />` +
+		`<meta name="dap-layout" content="` + html.EscapeString(string(raw)) + `" />`
+	page := injectRoot(bytes.Replace(b, []byte("<!--DAP_BOOT-->"), []byte(boot), 1), map[string]string{
+		"data-theme":      mode,
+		"data-density":    prefs.PluginDensity(),
+		"data-home-view":  prefs.Home.View,
+		"data-inbox-view": prefs.Inbox.View,
+	})
 	secure(w, s.URL())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write(html)
+	_, _ = w.Write(page)
+}
+
+func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":     true,
+		"theme":  s.App.Theme(),
+		"layout": s.App.Layout(),
+	})
+}
+
+func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Theme  *string          `json:"theme"`
+		Layout *layout.Settings `json:"layout"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	mode := s.App.Theme()
+	if body.Theme != nil {
+		next, err := s.App.SetTheme(*body.Theme)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		mode = next
+	}
+	prefs := s.App.Layout()
+	if body.Layout != nil {
+		next, err := s.App.SetLayout(*body.Layout)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		prefs = next
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "theme": mode, "layout": prefs})
 }
 
 func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
@@ -158,26 +216,6 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 		}
 		next(w, r)
 	}
-}
-
-func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "theme": s.App.Theme()})
-}
-
-func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Theme string `json:"theme"`
-	}
-	if err := readJSON(r, &body); err != nil {
-		writeErr(w, err)
-		return
-	}
-	mode, err := s.App.SetTheme(body.Theme)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "theme": mode})
 }
 
 func (s *Server) home(w http.ResponseWriter, r *http.Request) {
@@ -357,6 +395,44 @@ func (s *Server) run(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+func (s *Server) connections(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "connections": s.App.MailStatuses(), "agents": core.DetectAgents()})
+}
+
+func (s *Server) connectionSetup(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ClientID string `json:"client_id"`
+		Calendar bool   `json:"calendar"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	if err := s.App.MailSetup(r.PathValue("provider"), body.ClientID, body.Calendar); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) connectionConnect(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 4*time.Minute)
+	defer cancel()
+	if err := s.App.MailConnect(ctx, r.PathValue("provider")); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) connectionDisconnect(w http.ResponseWriter, r *http.Request) {
+	if err := s.App.MailDisconnect(r.PathValue("provider")); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 func (s *Server) doctor(w http.ResponseWriter, r *http.Request) {
 	rep := s.App.Doctor()
 	writeJSON(w, http.StatusOK, map[string]any{"ok": rep.OK, "version": rep.Version, "checks": rep.Checks})
@@ -485,7 +561,9 @@ func (s *Server) pluginRedirect(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "this plugin has no web UI", http.StatusNotFound)
 		return
 	}
-	http.Redirect(w, r, withThemeQuery(box.url, chosenTheme(r, s.App.Theme())), http.StatusFound)
+	target := withQuery(box.url, "theme", chosenTheme(r, s.App.Theme()))
+	target = withQuery(target, "density", layout.ChosenDensity(r.URL.Query().Get("density"), s.App.Layout().PluginDensity()))
+	http.Redirect(w, r, target, http.StatusFound)
 }
 
 // injectTheme sets data-theme on the root element before the browser paints.
@@ -515,14 +593,49 @@ func chosenTheme(r *http.Request, fallback string) string {
 }
 
 func withThemeQuery(raw, mode string) string {
+	return withQuery(raw, "theme", theme.Stored(mode))
+}
+
+func withQuery(raw, key, value string) string {
 	u, err := url.Parse(raw)
 	if err != nil {
 		return raw
 	}
 	q := u.Query()
-	q.Set("theme", theme.Stored(mode))
+	q.Set(key, value)
 	u.RawQuery = q.Encode()
 	return u.String()
+}
+
+func injectRoot(doc []byte, attrs map[string]string) []byte {
+	start := bytes.Index(doc, []byte("<html"))
+	if start < 0 {
+		return doc
+	}
+	rel := bytes.IndexByte(doc[start:], '>')
+	if rel < 0 {
+		return doc
+	}
+	end := start + rel
+	keys := make([]string, 0, len(attrs))
+	for k := range attrs {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	b.WriteString(`<html lang="en"`)
+	for _, k := range keys {
+		b.WriteByte(' ')
+		b.WriteString(k)
+		b.WriteString(`="`)
+		b.WriteString(html.EscapeString(attrs[k]))
+		b.WriteString(`"`)
+	}
+	b.WriteByte('>')
+	out := append([]byte{}, doc[:start]...)
+	out = append(out, b.String()...)
+	out = append(out, doc[end+1:]...)
+	return out
 }
 
 func file(static fs.FS, name string) http.HandlerFunc {

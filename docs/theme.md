@@ -7,15 +7,15 @@ System follows the operating system through `prefers-color-scheme` and updates w
 ## Where the choice is stored
 
 - The browser keeps `localStorage["dap.theme"]` (`system`, `light`, or `dark`). `theme-boot.js` reads it and sets `<html data-theme>` before the stylesheet loads, so the first paint matches.
-- The server keeps the same value in `config.json` as `"theme"`. `GET` and `PUT /api/settings` read and write `{ "theme": "dark" }`. A browser with no saved choice takes the server value. A browser that already chose writes that choice back, so the next browser on this machine starts there.
+- The server keeps the same value in `config.json` as `"theme"`. `GET` and `PUT /api/settings` read and write `theme` next to `layout`. A body may send either key. A browser with no saved choice takes the server value. A browser that already chose writes that choice back, so the next browser on this machine starts there.
 
 ## Plugin pages
 
 A plugin UI is a different loopback origin, so it cannot read the core page's `localStorage`. DAP passes the mode in three ways:
 
-1. The link and the `/plugins/<name>/` redirect include `?theme=system|light|dark`.
-2. The sandbox sets `<html data-theme="...">` and `<meta name="dap-theme" content="...">` from that query, or from `config.json` when the query is absent.
-3. The sandbox serves the core token sheet at `/theme.css` and the boot script at `/theme-boot.js`.
+1. The link and the `/plugins/<name>/` redirect include `?theme=system|light|dark` and `?density=comfortable|compact`.
+2. The sandbox sets `<html data-theme="...">`, `<html data-density="...">`, and the matching meta tags from that query, or from `config.json` when the query is absent.
+3. The sandbox serves `/theme.css`, `/theme-boot.js`, `/layout.css`, and `/layout-boot.js`.
 
 `theme-boot.js` applies the query first, then `localStorage` on that origin, then the attribute already on `<html>`. Include the script before any stylesheet:
 
@@ -24,7 +24,9 @@ A plugin UI is a different loopback origin, so it cannot read the core page's `l
 <head>
   <script src="/theme-boot.js"></script>
   <!--DAP_BOOT-->
+  <script src="/layout-boot.js"></script>
   <link rel="stylesheet" href="/theme.css" />
+  <link rel="stylesheet" href="/layout.css" />
   <link rel="stylesheet" href="/app.css" />
 </head>
 ```
@@ -35,4 +37,4 @@ A window that is already open does not see a later change made in the core. The 
 
 The same window also accepts a `message` event `{ "type": "dap.theme", "theme": "dark" }` from a `http://127.0.0.1` or `http://localhost` origin. The core opens plugin pages with `rel="noreferrer"`, so it uses the query string rather than `postMessage`.
 
-`plugins/workflow/ui` is the example that follows this contract. `hello-watch` has no web UI.
+`plugins/workflow/ui` and `plugins/inbox-followups/ui` follow this contract. `hello-watch` has no web UI. Density is described in [layout.md](layout.md).

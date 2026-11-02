@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"html"
 	"io"
 	"io/fs"
 	"net"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/vicgupta/dap/internal/core"
+	"github.com/vicgupta/dap/internal/layout"
 	"github.com/vicgupta/dap/internal/web"
 )
 
@@ -103,12 +105,10 @@ func (b *sandbox) handler() http.Handler {
 		switch {
 		case strings.HasPrefix(r.URL.Path, "/api/"):
 			b.proxy(w, r)
+		case r.URL.Path == "/layout.css" || r.URL.Path == "/layout-boot.js" || r.URL.Path == "/theme.css" || r.URL.Path == "/theme-boot.js":
+			b.coreStatic(w, r)
 		case strings.HasPrefix(r.URL.Path, "/fonts/"):
 			b.fonts(w, r)
-		case r.URL.Path == "/theme.css":
-			b.coreFile(w, r, "theme.css")
-		case r.URL.Path == "/theme-boot.js":
-			b.coreFile(w, r, "theme-boot.js")
 		case r.URL.Path == "/" || r.URL.Path == "/index.html":
 			b.serveIndex(w, r)
 		default:
@@ -124,37 +124,31 @@ func (b *sandbox) serveIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mode := chosenTheme(r, b.app.Theme())
+	density := layout.ChosenDensity(r.URL.Query().Get("density"), b.app.Layout().PluginDensity())
 	inbox := strings.TrimRight(b.parent, "/") + "/#/inbox"
-	boot := `<meta name="dap-token" content="` + b.app.Token(b.name) + `" />` +
+	boot := `<meta name="dap-token" content="` + html.EscapeString(b.app.Token(b.name)) + `" />` +
 		`<meta name="dap-api" content="/api" />` +
-		`<meta name="dap-plugin" content="` + b.name + `" />` +
-		`<meta name="dap-inbox" content="` + inbox + `" />` +
-		`<meta name="dap-theme" content="` + mode + `" />`
-	html := injectTheme(bytes.Replace(raw, []byte("<!--DAP_BOOT-->"), []byte(boot), 1), mode)
+		`<meta name="dap-plugin" content="` + html.EscapeString(b.name) + `" />` +
+		`<meta name="dap-inbox" content="` + html.EscapeString(inbox) + `" />` +
+		`<meta name="dap-theme" content="` + mode + `" />` +
+		`<meta name="dap-density" content="` + density + `" />`
+	page := injectRoot(bytes.Replace(raw, []byte("<!--DAP_BOOT-->"), []byte(boot), 1), map[string]string{
+		"data-theme":   mode,
+		"data-density": density,
+	})
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write(html)
+	_, _ = w.Write(page)
 }
 
-func (b *sandbox) coreFile(w http.ResponseWriter, r *http.Request, name string) {
+func (b *sandbox) coreStatic(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimPrefix(r.URL.Path, "/")
 	static, err := fs.Sub(web.Static, "static")
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	raw, err := fs.ReadFile(static, name)
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	switch {
-	case strings.HasSuffix(name, ".css"):
-		w.Header().Set("Content-Type", "text/css; charset=utf-8")
-	case strings.HasSuffix(name, ".js"):
-		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-	}
-	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write(raw)
+	file(static, name)(w, r)
 }
 
 func (b *sandbox) fonts(w http.ResponseWriter, r *http.Request) {

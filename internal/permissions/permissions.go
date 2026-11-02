@@ -62,11 +62,11 @@ func Plain(p manifest.Permission) string {
 func humanize(name string) string {
 	switch name {
 	case "mail.read":
-		return "Read mail"
+		return "Read mail threads"
 	case "mail.draft":
-		return "Draft mail, without sending"
+		return "Prepare a draft, without sending"
 	case "mail.send":
-		return "Send mail"
+		return "Send mail as you"
 	case "web.read":
 		return "Read public web pages"
 	case "files.write":

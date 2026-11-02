@@ -1,0 +1,19 @@
+name: mail-gmail
+version: 0.1.0
+min_dap_version: 0.1.0
+type: capability
+interface: dap.plugin.v1
+description: Gmail mailbox. DAP holds the OAuth token and plugins never see it.
+entrypoint: mail_gmail.py
+permissions:
+  - name: mail.read
+    mode: allowed
+    description: Read Gmail threads
+  - name: mail.draft
+    mode: allowed
+    description: Prepare a Gmail draft, without sending
+  - name: mail.send
+    mode: ask_first
+    description: Send mail as you from Gmail
+provides:
+  - gmail

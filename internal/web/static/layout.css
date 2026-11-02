@@ -1,0 +1,21 @@
+/* Density tokens for the core UI and plugin pages.
+   html[data-density="compact"] tightens the cards. Comfortable is the default.
+   Colors stay in the theme tokens (--bg, --surface, --ink, and the rest). */
+
+:root {
+  --card-pad: 16px 16px 14px;
+  --card-gap: 12px;
+  --card-title: 16px;
+  --card-radius: 16px;
+  --stack-gap: 12px;
+  --layout-gap: 14px;
+}
+
+html[data-density="compact"] {
+  --card-pad: 10px 12px 8px;
+  --card-gap: 8px;
+  --card-title: 14px;
+  --card-radius: 12px;
+  --stack-gap: 8px;
+  --layout-gap: 8px;
+}

@@ -2,6 +2,7 @@
 package core
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -10,12 +11,15 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/vicgupta/dap/internal/layout"
 	"github.com/vicgupta/dap/internal/ledger"
 	"github.com/vicgupta/dap/internal/lockfile"
+	"github.com/vicgupta/dap/internal/mail"
 	"github.com/vicgupta/dap/internal/model"
 	"github.com/vicgupta/dap/internal/pluginhost"
 	"github.com/vicgupta/dap/internal/secrets"
@@ -30,6 +34,7 @@ type App struct {
 	store   *store.Store
 	ledger  *ledger.Ledger
 	secrets secrets.Keeper
+	mail    *mail.Broker
 	host    *pluginhost.Host
 	lock    *lockfile.Lock
 
@@ -108,11 +113,17 @@ func Open(dir string) (*App, error) {
 			sec = auto
 		}
 	}
+	box, err := mail.New(abs, sec)
+	if err != nil {
+		_ = lk.Release()
+		return nil, err
+	}
 	return &App{
 		DataDir:    abs,
 		store:      st,
 		ledger:     led,
 		secrets:    sec,
+		mail:       box,
 		host:       pluginhost.New(),
 		lock:       lk,
 		runMu:      map[string]*sync.Mutex{},
@@ -205,17 +216,21 @@ func saveFileConfig(dir string, cfg FileConfig) error {
 	if err != nil {
 		return err
 	}
-	cfg.Theme = mode
-	raw, err := json.MarshalIndent(cfg, "", "  ")
+	raw, err := readConfigRaw(dir)
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(dir, "config.json")
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, append(raw, '\n'), 0o600); err != nil {
+	addr, err := json.Marshal(cfg.Addr)
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	themeRaw, err := json.Marshal(mode)
+	if err != nil {
+		return err
+	}
+	raw["addr"] = addr
+	raw["theme"] = themeRaw
+	return writeConfigRaw(dir, raw)
 }
 
 // Theme is the saved appearance mode: system, light, or dark.
@@ -249,6 +264,119 @@ func LoadFileConfig(dir string) FileConfig {
 		return FileConfig{Addr: "127.0.0.1:7391", Theme: theme.System}
 	}
 	return cfg
+}
+
+// Layout is the card layout saved in config.json. Missing or invalid
+// text becomes the defaults. Other keys in the file are left alone.
+func (a *App) Layout() layout.Settings {
+	raw, err := readConfigRaw(a.DataDir)
+	if err != nil || len(raw["layout"]) == 0 {
+		return layout.Default()
+	}
+	var in layout.Settings
+	if err := json.Unmarshal(raw["layout"], &in); err != nil {
+		return layout.Default()
+	}
+	return layout.Stored(in)
+}
+
+// SetLayout validates and stores the card layout. Keys other than "layout"
+// (for example a theme saved by another change) stay in config.json.
+func (a *App) SetLayout(in layout.Settings) (layout.Settings, error) {
+	next, err := layout.Normalize(in)
+	if err != nil {
+		return layout.Settings{}, err
+	}
+	body, err := json.Marshal(next)
+	if err != nil {
+		return layout.Settings{}, err
+	}
+	a.configMu.Lock()
+	defer a.configMu.Unlock()
+	raw, err := readConfigRaw(a.DataDir)
+	if err != nil {
+		return layout.Settings{}, err
+	}
+	raw["layout"] = body
+	if err := writeConfigRaw(a.DataDir, raw); err != nil {
+		return layout.Settings{}, err
+	}
+	return next, nil
+}
+
+func readConfigRaw(dir string) (map[string]json.RawMessage, error) {
+	path := filepath.Join(dir, "config.json")
+	out := map[string]json.RawMessage{}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			out["addr"] = json.RawMessage(`"127.0.0.1:7391"`)
+			return out, nil
+		}
+		return nil, err
+	}
+	if len(bytes.TrimSpace(b)) > 0 {
+		if err := json.Unmarshal(b, &out); err != nil {
+			return nil, err
+		}
+	}
+	if len(out["addr"]) == 0 || string(out["addr"]) == `""` {
+		out["addr"] = json.RawMessage(`"127.0.0.1:7391"`)
+	}
+	return out, nil
+}
+
+func writeConfigRaw(dir string, raw map[string]json.RawMessage) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	keys := make([]string, 0, len(raw))
+	for k := range raw {
+		if k != "addr" && k != "theme" && k != "layout" {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	ordered := make([]string, 0, len(keys)+3)
+	for _, k := range []string{"addr", "theme", "layout"} {
+		if _, ok := raw[k]; ok {
+			ordered = append(ordered, k)
+		}
+	}
+	ordered = append(ordered, keys...)
+	var buf bytes.Buffer
+	buf.WriteString("{\n")
+	for i, k := range ordered {
+		key, err := json.Marshal(k)
+		if err != nil {
+			return err
+		}
+		val := bytes.TrimSpace(raw[k])
+		if len(val) == 0 {
+			val = []byte("null")
+		}
+		buf.WriteString("  ")
+		buf.Write(key)
+		buf.WriteString(": ")
+		if val[0] == '{' || val[0] == '[' {
+			var pretty bytes.Buffer
+			if err := json.Indent(&pretty, val, "  ", "  "); err == nil {
+				val = pretty.Bytes()
+			}
+		}
+		buf.Write(val)
+		if i < len(ordered)-1 {
+			buf.WriteString(",")
+		}
+		buf.WriteString("\n")
+	}
+	buf.WriteString("}\n")
+	path := filepath.Join(dir, "config.json")
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, buf.Bytes(), 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 func (a *App) now() time.Time {
