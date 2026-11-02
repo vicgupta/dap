@@ -123,6 +123,7 @@ A plugin with a `ui` block is served on its own `127.0.0.1` port. The core route
 
 - **Appearance.** The top bar has System, Light, and Dark. System follows the OS. The choice is in `localStorage` (`dap.theme`) and `config.json` (`theme`). See [docs/theme.md](docs/theme.md).
 - **Home.** Every plugin, health, last run, next run, pending count, missed-run line. Grid, list, or board. Tile size is small, medium, or large.
+- **Chat.** Claude Code or Codex, read-only, with approval cards for anything that would change data or send. Ctrl+Shift+C opens it. See [docs/chat.md](docs/chat.md).
 - **Decision inbox.** `j` / `k` or the arrow keys move. `a` approves, `e` edits, `r` rejects, `s` snoozes. Shortcuts are ignored while a field is focused. Snooze offers 1 hour, 4 hours, or tomorrow at 08:00 local. Reject asks for a reason. Edit changes the title, summary, and body. List, grid, board (one column per plugin), or a split list and detail. Approve and Reject stay on the card in every layout.
 - **Activity.** The ledger, newest first.
 - **Guardrails.** The baked-in rules, each permission's effective mode, and recent checks. A control can tighten a permission. It cannot loosen one.

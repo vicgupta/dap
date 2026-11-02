@@ -13,4 +13,6 @@ var (
 	ErrBadState = errors.New("invalid card state")
 	// ErrStopping means DAP is quitting and will not start new work.
 	ErrStopping = errors.New("DAP is shutting down")
+	// ErrBusy means a chat turn is already running for that session.
+	ErrBusy = errors.New("a chat turn is already running")
 )

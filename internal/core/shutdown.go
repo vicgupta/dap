@@ -27,6 +27,7 @@ type QuitStatus struct {
 	PluginsRunning  int  `json:"plugins_running"`
 	InflightActions int  `json:"inflight_actions"`
 	Acting          int  `json:"acting"`
+	ChatTurns       int  `json:"chat_turns"`
 }
 
 // QuitStatus reports running plugins and work that quit should mention.
@@ -34,6 +35,10 @@ func (a *App) QuitStatus() QuitStatus {
 	a.mu.Lock()
 	ops := a.inflightOps
 	acts := a.inflightActs
+	chatTurns := 0
+	if a.chatSys != nil && a.chatSys.runner != nil && a.chatSys.runner.Running() {
+		chatTurns = 1
+	}
 	a.mu.Unlock()
 	running := 0
 	for _, name := range a.host.Names() {
@@ -51,10 +56,11 @@ func (a *App) QuitStatus() QuitStatus {
 		acting = acts
 	}
 	return QuitStatus{
-		Running:         running > 0 || ops > 0 || acting > 0,
+		Running:         running > 0 || ops > 0 || acting > 0 || chatTurns > 0,
 		PluginsRunning:  running,
 		InflightActions: ops,
 		Acting:          acting,
+		ChatTurns:       chatTurns,
 	}
 }
 
@@ -73,6 +79,7 @@ func (a *App) shutdown() error {
 	a.stopping = true
 	a.mu.Unlock()
 	a.StopScheduler()
+	a.stopChat()
 	a.waitIdle(ShutdownActTimeout)
 	a.shutdownPlugins()
 	a.waitIdle(shutdownSettleTimeout)
