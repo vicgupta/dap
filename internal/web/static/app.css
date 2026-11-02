@@ -398,8 +398,8 @@ table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 10px 12px; border-top: 1px solid var(--line); vertical-align: top; font-weight: 400; }
 th { color: var(--faint); font-size: 12px; font-weight: 600; }
 .section-title { margin: 22px 0 8px; font-size: 13px; color: var(--muted); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
-.plugin-block { padding: 16px; }
-.plugin-block + .plugin-block { margin-top: 12px; }
+.plugin-block { padding: var(--card-pad, 16px); }
+.plugin-block + .plugin-block { margin-top: var(--stack-gap, 12px); }
 .perm { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
 .checks li { list-style: none; padding: 8px 0; border-top: 1px solid var(--line); }
 .tighten { display: flex; gap: 8px; align-items: center; }
@@ -540,6 +540,8 @@ select {
 html[data-density="compact"] .decision .actions button,
 html[data-density="compact"] .plugin-card .actions button,
 html[data-density="compact"] .plugin-card .actions a.ghost,
+html[data-density="compact"] .plugin-block .actions button,
+html[data-density="compact"] .plugin-block .actions a.ghost,
 html[data-density="compact"] .split-item .actions button {
   padding: 5px 10px;
 }
@@ -570,3 +572,26 @@ html[data-density="compact"] .split-item .actions button {
 @media (max-width: 640px) {
   .cards.grid > .size-small { grid-column: span 6; }
 }
+
+.type-row { display: flex; flex-wrap: wrap; gap: var(--layout-gap, 8px); margin-top: 8px; }
+.type-choice { display: flex; flex-direction: column; align-items: flex-start; text-align: left; min-width: 180px; }
+.type-choice.selected, button.ghost.selected { border-color: var(--selected-border); box-shadow: var(--selected-ring); }
+.create-log {
+  margin: 12px 0 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: 12px;
+  border-radius: var(--card-radius, 12px);
+  background: var(--sunken);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  font: 12.5px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+}
+html[data-density="compact"] .create-log { max-height: 220px; padding: 8px; }
+html[data-density="compact"] .type-choice { min-width: 0; flex: 1 1 150px; }
+html[data-density="compact"] .page-head { margin-bottom: 14px; }
+html[data-density="compact"] textarea { min-height: 64px; }
+.checks .pass { color: var(--good); }
+.checks .fail { color: var(--danger); }
+label.inline { flex-direction: row; align-items: center; }

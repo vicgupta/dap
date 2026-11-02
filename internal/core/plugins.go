@@ -280,7 +280,7 @@ func (a *App) startOne(name string) error {
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return err
 	}
-	argv, err := m.Entrypoint.Command(rec.Dir)
+	argv, err := m.Launch(rec.Dir)
 	if err != nil {
 		a.failStart(name, err)
 		return err
