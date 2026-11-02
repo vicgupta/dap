@@ -52,6 +52,9 @@ The admin API used by the UI and the CLI, all under the admin token:
 | POST | `/api/plugins/{name}/remove`, `approve`, `run` |
 | POST | `/api/propose`, `/api/check`, `/api/log`, `/api/outcome`, `/api/tile` |
 | POST | `/api/connections/{provider}/setup`, `connect`, `disconnect` (`gmail`, `graph`, or `fake`) |
+| POST | `/api/create/scaffold`, `/api/create/run`, `/api/create/validate`, `/api/create/propose` |
+| GET | `/api/create/run/{id}` |
+| POST | `/api/create/run/{id}/cancel` |
 | GET | `/api/quit-status` — whether plugins are running and whether an action is in flight |
 | POST | `/api/quit` — admin token, loopback peer, `X-DAP-Request: quit`, POST only. Starts the shutdown above |
 | GET | `/plugins/{name}/` redirects to that plugin's loopback origin |

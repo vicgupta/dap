@@ -3,12 +3,14 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/signal"
 	"os/user"
 	"path/filepath"
 	"strings"
@@ -19,6 +21,7 @@ import (
 	"github.com/vicgupta/dap/internal/core"
 	"github.com/vicgupta/dap/internal/desktop"
 	"github.com/vicgupta/dap/internal/model"
+	"github.com/vicgupta/dap/internal/pluginauthor"
 	"github.com/vicgupta/dap/internal/runinfo"
 	"github.com/vicgupta/dap/internal/version"
 )
@@ -67,7 +70,7 @@ func Run(args []string, opt Options) int {
 			return 1
 		}
 	case "plugin":
-		result, err = cmdPlugin(data, rest[1:])
+		result, err = cmdPlugin(data, rest[1:], opt)
 	case "context":
 		result, err = cmdContext(data, rest[1:])
 	case "propose":
@@ -116,6 +119,9 @@ const usage = `da — Dashboard Agent Platform
   da plugin list
   da plugin remove <name>
   da plugin approve <name>
+  da plugin new <name> [--type watcher|capability|workflow] [--lang ts|python] [--ui] [--dir path]
+  da plugin validate <path>
+  da plugin dev <path>
   da context [--plugin name]
   da propose            JSON on stdin
   da approved
@@ -390,11 +396,13 @@ func cmdDoctor(dir string) (any, error) {
 	return s.app.Doctor(), nil
 }
 
-func cmdPlugin(dir string, args []string) (any, error) {
+func cmdPlugin(dir string, args []string, opt Options) (any, error) {
 	if len(args) == 0 {
-		return nil, errors.New("usage: da plugin install|list|remove|approve")
+		return nil, errors.New("usage: da plugin install|list|remove|approve|new|validate|dev")
 	}
 	switch args[0] {
+	case "new", "validate", "dev":
+		return cmdPluginLocal(args, opt)
 	case "list":
 		s, err := openSession(dir, false)
 		if err != nil {
@@ -674,6 +682,81 @@ func readInput(r io.Reader, dest any) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+func cmdPluginLocal(args []string, opt Options) (any, error) {
+	switch args[0] {
+	case "new":
+		optNew := pluginauthor.Options{Lang: "ts", Type: "watcher"}
+		var name string
+		for i := 1; i < len(args); i++ {
+			a := args[i]
+			switch {
+			case a == "--type" && i+1 < len(args):
+				i++
+				optNew.Type = args[i]
+			case strings.HasPrefix(a, "--type="):
+				optNew.Type = strings.TrimPrefix(a, "--type=")
+			case a == "--lang" && i+1 < len(args):
+				i++
+				optNew.Lang = args[i]
+			case strings.HasPrefix(a, "--lang="):
+				optNew.Lang = strings.TrimPrefix(a, "--lang=")
+			case a == "--dir" && i+1 < len(args):
+				i++
+				optNew.Dir = args[i]
+			case strings.HasPrefix(a, "--dir="):
+				optNew.Dir = strings.TrimPrefix(a, "--dir=")
+			case a == "--ui":
+				optNew.UI = true
+			case a == "--description" && i+1 < len(args):
+				i++
+				optNew.Description = args[i]
+			case strings.HasPrefix(a, "--description="):
+				optNew.Description = strings.TrimPrefix(a, "--description=")
+			default:
+				if strings.HasPrefix(a, "-") {
+					return nil, fmt.Errorf("unknown flag %s", a)
+				}
+				name = a
+			}
+		}
+		if name == "" {
+			return nil, errors.New("usage: da plugin new <name> [--type watcher|capability|workflow] [--lang ts|python] [--ui] [--dir path]")
+		}
+		optNew.Name = name
+		path, err := pluginauthor.Scaffold(optNew)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"ok": true, "path": path, "name": name, "type": optNew.Type, "lang": optNew.Lang}, nil
+	case "validate":
+		if len(args) < 2 {
+			return nil, errors.New("usage: da plugin validate <path>")
+		}
+		rep := pluginauthor.Validate(args[1])
+		if !rep.OK {
+			write(opt.Stdout, rep)
+			return nil, errors.New("plugin did not pass validation")
+		}
+		return rep, nil
+	case "dev":
+		if len(args) < 2 {
+			return nil, errors.New("usage: da plugin dev <path>")
+		}
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer stop()
+		out := opt.Stdout
+		if out == nil {
+			out = os.Stdout
+		}
+		if err := pluginauthor.Dev(ctx, args[1], out); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("unknown plugin command %q", args[0])
+	}
 }
 
 func write(w io.Writer, v any) {

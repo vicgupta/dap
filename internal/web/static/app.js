@@ -19,6 +19,7 @@ const state = {
   installPath: "",
   preview: null,
   data: {},
+  create: { description: "", name: "", type: "", lang: "ts", ui: false, agent: "", phase: "form", log: "", report: null, path: "", edit: "" },
   quitConfirm: null,
   quitPending: false,
   quitting: false,
@@ -44,6 +45,7 @@ const ICONS = {
   activity: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 8h2.2l1.4-3.2L8 12l1.6-4H14"/></svg>',
   guard: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2.2 13 4.2v3.6c0 3-2.1 4.8-5 6-2.9-1.2-5-3-5-6V4.2L8 2.2Z"/></svg>',
   plugins: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 2.5h4V5H6zM3 6.5h4V9H3zM9 6.5h4V9H9zM6 10h4v2.5H6z"/><path d="M8 5v1.5M5 9v1.5h6V9"/></svg>',
+  create: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2.5v11M2.5 8h11"/></svg>',
   connections: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="4" cy="8" r="1.6"/><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="11" r="1.6"/><path d="M5.5 7.4 10.4 5.6M5.5 8.6l4.9 2"/></svg>',
   power: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M8 2.2v5.2"/><path d="M5.05 3.7a5 5 0 1 0 5.9 0"/></svg>',
   layoutList: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 4.5h10M3 8h10M3 11.5h10"/></svg>',
@@ -63,8 +65,14 @@ const ICONS = {
 
 function routeFromHash() {
   const h = (location.hash || "#/").replace(/^#\/?/, "");
-  if (["inbox", "activity", "guardrails", "plugins", "connections"].includes(h)) return h;
+  const path = h.split("?")[0];
+  if (["inbox", "activity", "guardrails", "plugins", "connections", "create"].includes(path)) return path;
   return "home";
+}
+
+function hashQuery() {
+  const q = (location.hash || "").split("?")[1] || "";
+  return new URLSearchParams(q);
 }
 
 function esc(s) {
@@ -355,6 +363,7 @@ function shell(inner) {
           ${item("guardrails", "Guardrails", "guard")}
           ${item("plugins", "Plugins", "plugins")}
           ${item("connections", "Connections", "connections")}
+          ${item("create", "Create plugin", "create")}
         </nav>
         ${quitControl()}
       </aside>
@@ -674,6 +683,7 @@ function pluginsView() {
       <div class="actions" style="margin-top:12px">
         ${p.needs_approval ? `<button class="primary" data-act="approve-manifest" data-name="${esc(p.name)}">Approve permissions</button>` : ""}
         ${p.ui_url ? `<a class="ghost" href="${esc(withLayout(p.ui_url))}" target="_blank" rel="noreferrer">Open ${esc(p.ui_title || "web UI")}</a>` : ""}
+        <button class="ghost" data-act="edit-agent" data-name="${esc(p.name)}">Edit with agent</button>
         <button class="ghost" data-act="remove" data-name="${esc(p.name)}">Remove</button>
       </div>
     </article>`;
@@ -700,6 +710,99 @@ function pluginsView() {
     </form>
     ${previewHTML}
     <div class="stack">${cards || `<div class="card empty"><h2>Nothing installed</h2></div>`}</div>
+  `);
+}
+
+function runtimeHint(lang) {
+  const rows = (state.data.home && state.data.home.runtimes) || [];
+  const node = rows.find((r) => r.name === "node");
+  const bun = rows.find((r) => r.name === "bun");
+  if (lang === "python") return "Python plugins run with python3. The other shipped plugins that are still Python keep working.";
+  const nodeLine = node && node.ok ? "Node " + (node.version || "") + " is available." : "Node.js 20 or newer is not available. Install it from https://nodejs.org.";
+  const bunLine = bun && bun.found ? " Bun can run TypeScript directly when a plugin sets runtime: bun." : "";
+  return nodeLine + bunLine;
+}
+
+function suggestType(text) {
+  const d = (text || "").toLowerCase();
+  if (d.includes("workflow") || d.includes("step")) return "workflow";
+  if (d.includes("capability") || d.includes("other plugin")) return "capability";
+  return "watcher";
+}
+
+function createView() {
+  const c = state.create;
+  const edit = hashQuery().get("edit") || c.edit || "";
+  const agents = (state.data.home && state.data.home.agents) || [];
+  const found = agents.filter((a) => a.found);
+  const suggested = suggestType(c.description);
+  const type = c.type || suggested;
+  if (c.phase === "run" || c.phase === "done") {
+    const checks = (c.report && c.report.checks || []).map((row) =>
+      `<li class="${row.ok ? "pass" : "fail"}"><strong>${esc(row.name)}</strong> ${esc(row.detail || "")}</li>`).join("");
+    const failed = c.report && c.report.ok === false;
+    const passed = c.report && c.report.ok === true;
+    return shell(`
+      <header class="page-head"><div><h1>${edit ? "Edit with agent" : "Create plugin"}</h1><p>${esc(c.name || edit || "Plugin")}</p></div></header>
+      <section class="card plugin-block">
+        <p class="sub">${esc(c.status || "Working")}</p>
+        <pre class="create-log" aria-live="polite">${esc(c.log || "Starting…")}</pre>
+        <div class="actions" style="margin-top:12px">
+          ${c.status === "running" ? `<button class="ghost" data-act="create-cancel">Cancel</button>` : ""}
+          ${failed ? `<button class="primary" data-act="create-fix">Ask the agent to fix</button>` : ""}
+          ${passed ? `<a class="ghost" href="#/inbox">Review the change card</a>` : ""}
+          <button class="quiet" data-act="create-reset">Start over</button>
+        </div>
+        ${checks ? `<h2 class="section-title">Validation</h2><ul class="checks">${checks}</ul>` : ""}
+        ${passed ? `<p class="sub">Validation passed. A change card is in the decision inbox. The plugin is not installed until you approve it.</p>` : ""}
+      </section>
+    `);
+  }
+  const typeBtn = (id, label, hint) => `<button type="button" class="ghost type-choice ${type === id ? "selected" : ""}" data-act="create-type" data-type="${id}" aria-pressed="${type === id}">${label}<span class="sub">${hint}</span></button>`;
+  const agentBtns = agents.map((a) => {
+    const disabled = a.found ? "" : "disabled";
+    const on = c.agent === a.name ? "selected" : "";
+    return `<button type="button" class="ghost ${on}" data-act="create-agent" data-agent="${esc(a.name)}" ${disabled} aria-pressed="${c.agent === a.name}">${esc(a.name)}${a.found ? "" : " · not installed"}</button>`;
+  }).join("");
+  const hints = agents.filter((a) => !a.found).map((a) => `<li><strong>${esc(a.name)}</strong> is not on PATH. Install it and log in with your own account. DAP does not take an API key. ${esc(a.name === "claude" ? "Claude Code: https://docs.anthropic.com/en/docs/claude-code" : a.name === "codex" ? "Codex CLI, then codex login." : "OpenCode, then log in.")}</li>`).join("");
+  return shell(`
+    <header class="page-head">
+      <div>
+        <h1>${edit ? "Edit " + esc(edit) : "Create plugin"}</h1>
+        <p>${edit ? "Describe the change. Approval still happens in the inbox." : "Describe what you want. Your coding agent writes the plugin. You approve before it is installed."}</p>
+      </div>
+    </header>
+    <form class="card plugin-block stack" data-act="create-start">
+      <label class="field">What should it do?
+        <textarea name="description" required placeholder="Watch a folder and ask me before it deletes anything.">${esc(c.description)}</textarea>
+      </label>
+      ${edit ? "" : `<label class="field">Name
+        <input name="name" type="text" placeholder="folder-watch" value="${esc(c.name)}" />
+      </label>`}
+      <div>
+        <p class="sub">Type${type === suggested ? " · suggested" : ""}</p>
+        <div class="type-row">
+          ${typeBtn("watcher", "Watcher", "Notices something and proposes cards")}
+          ${typeBtn("capability", "Capability", "A tool other plugins can use")}
+          ${typeBtn("workflow", "Workflow", "Ordered steps, some may wait")}
+        </div>
+      </div>
+      ${edit ? "" : `<label class="field inline"><input name="ui" type="checkbox" ${c.ui ? "checked" : ""} /> Include a small web page</label>
+      <label class="field">Language
+        <select name="lang">
+          <option value="ts" ${c.lang === "ts" ? "selected" : ""}>TypeScript</option>
+          <option value="python" ${c.lang === "python" ? "selected" : ""}>Python</option>
+        </select>
+      </label>
+      <p class="sub">${runtimeHint(c.lang)}</p>`}
+      <div>
+        <p class="sub">Coding agent</p>
+        <div class="type-row">${agentBtns || `<p class="sub">No agent list yet.</p>`}</div>
+      </div>
+      ${found.length ? "" : `<div class="banner">None of Claude Code, Codex, or OpenCode is on PATH. Install one and log in, then come back. DAP will not call a model for you.</div>`}
+      ${hints ? `<ul class="sub">${hints}</ul>` : ""}
+      <button class="primary" type="submit" ${found.length ? "" : "disabled"}> ${edit ? "Ask the agent to edit" : "Create draft and run agent"}</button>
+    </form>
   `);
 }
 
@@ -761,6 +864,7 @@ function render() {
     guardrails: guardView,
     plugins: pluginsView,
     connections: connectionsView,
+    create: createView,
   }[state.route]();
   const y = window.scrollY;
   root.innerHTML = html;
@@ -790,7 +894,7 @@ async function refresh() {
     if (state.route === "inbox") state.data.inbox = await api("/api/inbox");
     if (state.route === "activity") state.data.activity = await api("/api/activity");
     if (state.route === "guardrails") state.data.guard = await api("/api/guardrails");
-    if (state.route === "plugins") state.data.plugins = await api("/api/plugins");
+    if (state.route === "plugins" || state.route === "create") state.data.plugins = await api("/api/plugins");
     if (state.route === "connections") state.data.connections = await api("/api/connections");
     if (state.route !== "home") {
       state.data.home = await api("/api/home");
@@ -840,6 +944,40 @@ document.addEventListener("click", (ev) => {
   }
   const actName = el.dataset.act;
   const id = el.dataset.id;
+  if (actName === "create-type") {
+    state.create.type = el.dataset.type;
+    render();
+    return;
+  }
+  if (actName === "create-agent") {
+    state.create.agent = el.dataset.agent;
+    render();
+    return;
+  }
+  if (actName === "edit-agent") {
+    state.create = { description: "", name: el.dataset.name, type: "", lang: "ts", ui: false, agent: "", phase: "form", log: "", report: null, path: "", edit: el.dataset.name };
+    location.hash = "#/create?edit=" + encodeURIComponent(el.dataset.name);
+    state.route = "create";
+    render();
+    return;
+  }
+  if (actName === "create-cancel") {
+    if (state.create.runId) api("/api/create/run/" + state.create.runId + "/cancel", { method: "POST", body: {} }).catch(() => {});
+    state.create.status = "cancelled";
+    render();
+    return;
+  }
+  if (actName === "create-reset") {
+    state.create = { description: "", name: "", type: "", lang: "ts", ui: false, agent: "", phase: "form", log: "", report: null, path: "", edit: "" };
+    location.hash = "#/create";
+    render();
+    return;
+  }
+  if (actName === "create-fix") {
+    const failed = (state.create.report.checks || []).filter((row) => !row.ok).map((row) => row.name + ": " + (row.detail || "")).join("\n");
+    startAgent(state.create.description, failed);
+    return;
+  }
   if (actName === "theme-toggle") {
     state.themeOpen = !state.themeOpen;
     render();
@@ -989,6 +1127,36 @@ document.addEventListener("submit", (ev) => {
     act("edit", () => api("/api/inbox/" + form.dataset.id + "/edit", { method: "POST", body }));
   } else if (kind === "save-reject") {
     act("reject", () => api("/api/inbox/" + form.dataset.id + "/reject", { method: "POST", body: { reason: form.reason.value } }));
+  } else if (kind === "create-start") {
+    state.create.description = form.description.value.trim();
+    if (form.name) state.create.name = form.name.value.trim();
+    if (form.lang) state.create.lang = form.lang.value;
+    if (form.ui) state.create.ui = form.ui.checked;
+    if (!state.create.type) state.create.type = suggestType(state.create.description);
+    const agents = ((state.data.home && state.data.home.agents) || []).filter((a) => a.found);
+    if (!state.create.agent && agents[0]) state.create.agent = agents[0].name;
+    const edit = hashQuery().get("edit") || state.create.edit;
+    if (edit) {
+      state.create.edit = edit;
+      startAgent(state.create.description, "");
+      return;
+    }
+    act("scaffold", async () => {
+      const draft = await api("/api/create/scaffold", {
+        method: "POST",
+        body: {
+          name: state.create.name,
+          description: state.create.description,
+          type: state.create.type,
+          lang: state.create.lang,
+          ui: state.create.ui,
+        },
+      });
+      state.create.path = draft.path;
+      state.create.name = draft.name;
+      state.create.type = draft.type;
+      await startAgent(state.create.description, "");
+    });
   } else if (kind === "preview-install") {
     state.installPath = form.path.value.trim();
     act("preview", async () => {
@@ -1184,6 +1352,52 @@ document.addEventListener("keydown", (ev) => {
   }
 });
 
+async function startAgent(description, fix) {
+  state.create.phase = "run";
+  state.create.status = "running";
+  state.create.log = "";
+  state.create.report = null;
+  render();
+  const body = {
+    path: state.create.path,
+    plugin: state.create.edit || "",
+    agent: state.create.agent,
+    description,
+    fix,
+  };
+  const run = await api("/api/create/run", { method: "POST", body });
+  state.create.runId = run.id;
+  state.create.log = run.log || "";
+  render();
+}
+
+async function pollCreate() {
+  if (state.route !== "create" || state.create.status !== "running" || !state.create.runId) return;
+  try {
+    const run = await api("/api/create/run/" + state.create.runId);
+    state.create.log = run.log || state.create.log;
+    state.create.status = run.status;
+    if (run.error) state.create.log += "\n" + run.error;
+    if (run.status === "running") {
+      render();
+      return;
+    }
+    state.create.status = "checking";
+    const rep = await api("/api/create/validate", { method: "POST", body: { path: state.create.path, plugin: state.create.edit || "" } });
+    state.create.report = rep;
+    state.create.status = rep.ok ? "passed" : "needs a fix";
+    if (rep.ok) {
+      await api("/api/create/propose", { method: "POST", body: { path: state.create.path, plugin: state.create.edit || "" } });
+    }
+    state.create.phase = "done";
+    render();
+  } catch (err) {
+    state.error = err.message;
+    state.create.status = "failed";
+    render();
+  }
+}
+
 window.addEventListener("hashchange", () => {
   if (state.quitting) return;
   state.route = routeFromHash();
@@ -1240,6 +1454,7 @@ async function syncTheme() {
 
 applyLayoutAttrs();
 refresh();
+setInterval(() => { pollCreate(); }, 800);
 syncLayout();
 syncTheme();
 setInterval(() => {

@@ -4,7 +4,8 @@ min_dap_version: 0.1.0
 type: watcher
 interface: dap.plugin.v1
 description: A small watcher that proposes a hello on a schedule.
-entrypoint: hello_watch.py
+runtime: node
+entrypoint: dist/index.js
 permissions:
   - name: demo.greet
     mode: ask_first

@@ -8,7 +8,9 @@ Core version: `0.1.0` (`internal/version`). Go `1.22` or newer.
 | --- | --- |
 | [docs/architecture.md](docs/architecture.md) | Process model, window, tokens, scoped API |
 | [docs/cli.md](docs/cli.md) | Every `da` command, flag, exit code, and example |
+| [docs/plugin-authoring.md](docs/plugin-authoring.md) | Write a plugin, or point a coding agent at it |
 | [docs/plugins.md](docs/plugins.md) | `plugin.yaml`, the five-step interface, authoring in any language |
+| [AGENTS.md](AGENTS.md) | Rules for a coding agent working in this repo |
 | [docs/runtime.md](docs/runtime.md) | Scheduler, inbox, guardrails, ledger, secrets, doctor, data directory, limitations |
 | [docs/layout.md](docs/layout.md) | Home and inbox card layouts, density, and the plugin contract |
 | [docs/theme.md](docs/theme.md) | System, Light, and Dark, and how plugin pages follow them |
@@ -70,7 +72,7 @@ Those tags publish `da-<version>-linux-amd64.tar.gz`, `da-<version>-linux-arm64.
 
 ## Run
 
-Supported operating systems: macOS, Windows, and Linux. The binary is pure Go. Example plugins need Python 3 (`python3` on macOS and Linux; `python` or `py` on Windows).
+Supported operating systems: macOS, Windows, and Linux. The binary is pure Go. TypeScript plugins need Node.js 20 or newer (Bun is optional). Python plugins, including workflow and the mail connectors, need Python 3 (`python3` on macOS and Linux; `python` or `py` on Windows).
 
 ```bash
 go build -o da ./cmd/da          # Windows: go build -o da.exe ./cmd/da
@@ -128,6 +130,7 @@ A plugin with a `ui` block is served on its own `127.0.0.1` port. The core route
 - **Guardrails.** The baked-in rules, each permission's effective mode, and recent checks. A control can tighten a permission. It cannot loosen one.
 - **Plugins.** Review permissions in plain language, approve the install, see health, open a plugin UI, or remove a plugin.
 - **Connections.** Demo mailbox, Gmail, and Outlook. Setup is in [docs/inbox-followups.md](docs/inbox-followups.md).
+- **Create plugin.** Describe the job in plain words, pick a type and a coding agent that is already on `PATH` (Claude Code, Codex, or OpenCode). DAP scaffolds a draft, runs that agent with your login, validates, and puts a change card in the inbox. The plugin is installed only after you approve the card.
 - **Quit.** Bottom of the sidebar. Stops scheduled agents, shuts plugins down, and exits. `da quit` does the same.
 
 ## Safety rules
