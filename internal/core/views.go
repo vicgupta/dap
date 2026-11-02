@@ -81,7 +81,7 @@ func (a *App) Home() HomeView {
 	return HomeView{
 		OK:       true,
 		Version:  version.Version,
-		Pending:  pending,
+		Pending:  pending + a.chatPending(),
 		Plugins:  plugins,
 		Secrets:  a.SecretsBackend(),
 		Agents:   DetectAgents(),

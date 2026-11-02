@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/vicgupta/dap/internal/chat"
 	"github.com/vicgupta/dap/internal/guardrails"
 	"github.com/vicgupta/dap/internal/ledger"
 	"github.com/vicgupta/dap/internal/manifest"
@@ -45,6 +46,9 @@ func (a *App) finishApproved(id string) (model.Card, error) {
 	existing, ok := findCard(snap.Cards, id)
 	if !ok {
 		return model.Card{}, fmt.Errorf("%w: card %s", ErrNotFound, id)
+	}
+	if existing.Plugin == chat.PluginName {
+		return a.finishChatCard(existing)
 	}
 	rec := snap.Plugins[existing.Plugin]
 	installing := installPayload(existing) != ""

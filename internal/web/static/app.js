@@ -27,6 +27,18 @@ const state = {
   theme: document.documentElement.getAttribute("data-theme") || "system",
   themeOpen: false,
   layout: initialLayout(),
+  chat: {
+    provider: "",
+    providers: [],
+    sessions: [],
+    current: "",
+    session: null,
+    cards: {},
+    draft: "",
+    streaming: false,
+    loaded: false,
+    focusComposer: false,
+  },
   dragging: false,
   splitOpen: false,
   forceScroll: false,
@@ -48,6 +60,7 @@ const ICONS = {
   plugins: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 2.5h4V5H6zM3 6.5h4V9H3zM9 6.5h4V9H9zM6 10h4v2.5H6z"/><path d="M8 5v1.5M5 9v1.5h6V9"/></svg>',
   create: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2.5v11M2.5 8h11"/></svg>',
   connections: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="4" cy="8" r="1.6"/><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="11" r="1.6"/><path d="M5.5 7.4 10.4 5.6M5.5 8.6l4.9 2"/></svg>',
+  chat: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 3.5h10a1 1 0 0 1 1 1V10a1 1 0 0 1-1 1H7.2L4.2 13.2V11H3a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"/></svg>',
   power: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M8 2.2v5.2"/><path d="M5.05 3.7a5 5 0 1 0 5.9 0"/></svg>',
   layoutList: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 4.5h10M3 8h10M3 11.5h10"/></svg>',
   layoutGrid: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/></svg>',
@@ -67,7 +80,7 @@ const ICONS = {
 function routeFromHash() {
   const h = (location.hash || "#/").replace(/^#\/?/, "");
   const path = h.split("?")[0];
-  if (["inbox", "activity", "guardrails", "plugins", "connections", "create"].includes(path)) return path;
+  if (["chat", "inbox", "activity", "guardrails", "plugins", "connections", "create"].includes(path)) return path;
   return "home";
 }
 
@@ -341,7 +354,7 @@ function syncSelection(cards) {
   return cards;
 }
 
-function shell(inner) {
+function shell(inner, mainClass) {
   const pending = state.data.home ? state.data.home.pending : 0;
   const item = (route, label, icon) => {
     const active = state.route === route ? "active" : "";
@@ -359,6 +372,7 @@ function shell(inner) {
       <aside class="sidebar">
         <nav class="nav">
           ${item("home", "Home", "home")}
+          ${item("chat", "Chat", "chat")}
           ${item("inbox", "Decision inbox", "inbox")}
           ${item("activity", "Activity", "activity")}
           ${item("guardrails", "Guardrails", "guard")}
@@ -368,7 +382,7 @@ function shell(inner) {
         </nav>
         ${quitControl()}
       </aside>
-      <main class="main">
+      <main class="main${mainClass ? " " + mainClass : ""}">
         ${state.error ? `<div class="banner">${esc(state.error)}</div>` : ""}
         ${state.notice ? `<div class="banner ok">${esc(state.notice)}</div>` : ""}
         ${inner}
@@ -385,6 +399,9 @@ function quitNote(st) {
   }
   if (acting > 0) {
     return "An approved action is still executing. DAP will wait a few seconds for it to finish.";
+  }
+  if (Number(st.chat_turns) > 0) {
+    return "A chat turn is still running. DAP will stop it.";
   }
   if (inflight > 0) {
     return "A plugin action is still in progress. DAP will wait a few seconds for it to finish.";
@@ -907,12 +924,336 @@ function graphFallback(c) {
   return `<p class="sub" style="margin-top:10px"><button class="quiet" data-act="set-mode" data-provider="${esc(c.provider)}" data-mode="direct">Microsoft Graph instead</button></p>`;
 }
 
+function chatProviderList() {
+  if (state.chat.providers && state.chat.providers.length) return state.chat.providers;
+  return [
+    { id: "claude-code", label: "Claude Code" },
+    { id: "codex", label: "Codex" },
+  ];
+}
+
+function selectedChatProvider() {
+  const id = (state.chat.session && state.chat.session.provider) || state.chat.provider || "claude-code";
+  return chatProviderList().find((p) => p.id === id) || { id: id, label: id === "codex" ? "Codex" : "Claude Code" };
+}
+
+function chatReady(probe) {
+  if (!probe || probe.installed == null) return true;
+  if (!probe.installed) return false;
+  if (probe.signed_in) return true;
+  return !!probe.auth_unknown;
+}
+
+function chatView() {
+  const providers = chatProviderList();
+  const current = state.chat.session;
+  const selected = (current && current.provider) || state.chat.provider || "claude-code";
+  const probe = providers.find((p) => p.id === selected) || {};
+  const locked = current && current.messages && current.messages.length;
+  const picker = providers.map((p) => {
+    const on = p.id === selected;
+    const dot = !p.installed ? "bad" : p.signed_in ? "ok" : p.auth_unknown ? "warn" : "bad";
+    const version = p.version ? ` <span class="chat-ver">${esc(p.version)}</span>` : "";
+    return `<button type="button" class="chat-provider" role="radio" aria-checked="${on ? "true" : "false"}" data-act="chat-provider" data-provider="${esc(p.id)}" ${locked && !on ? "" : ""}>
+      <span class="dot ${dot}"></span><span>${esc(p.label || p.id)}</span>${version}
+    </button>`;
+  }).join("");
+  const hint = probe.hint
+    ? `<div class="chat-hint" role="status"><strong>${esc(probe.login || "Setup")}</strong><p>${esc(probe.hint)}</p></div>`
+    : "";
+  const history = (state.chat.sessions || []).map((s) => {
+    const on = s.id === state.chat.current;
+    const who = s.provider === "codex" ? "Codex" : "Claude Code";
+    return `<button type="button" class="chat-session${on ? " on" : ""}" data-act="chat-open" data-id="${esc(s.id)}" aria-current="${on ? "true" : "false"}">
+      <strong>${esc(s.title || "New chat")}</strong><span>${esc(who)}</span>
+    </button>`;
+  }).join("");
+  const ready = chatReady(probe);
+  const streaming = state.chat.streaming;
+  const sendLabel = streaming ? "Stop" : "Send";
+  const sendAct = streaming ? "chat-stop" : "chat-send";
+  return shell(`
+    <div class="chat-shell">
+      <header class="chat-head">
+        <div>
+          <h1>Chat</h1>
+          <p>Read-only until you approve a card. <span class="keys">Ctrl+Shift+C</span></p>
+        </div>
+        <div class="chat-head-actions">
+          <div class="chat-picker" role="radiogroup" aria-label="Coding agent">${picker}</div>
+          <button type="button" class="ghost" data-act="chat-new">New chat</button>
+        </div>
+      </header>
+      ${hint}
+      <div class="chat-body">
+        <aside class="chat-history" aria-label="Past chats">
+          ${history || `<p class="chat-history-empty">No past chats</p>`}
+        </aside>
+        <section class="chat-stage">
+          <div class="chat-thread" id="chat-thread">${chatThreadInner()}</div>
+          <form class="chat-composer" data-act="chat-send">
+            <label class="sr" for="chat-input">Message</label>
+            <textarea id="chat-input" class="chat-input" rows="2" placeholder="${ready ? "Ask a question. A change or a send becomes a card." : "Set up the CLI to start chatting."}" ${ready && !streaming ? "" : "disabled"}>${esc(state.chat.draft || "")}</textarea>
+            <button type="${streaming ? "button" : "submit"}" class="${streaming ? "ghost" : "primary"}" data-act="${sendAct}" ${!ready && !streaming ? "disabled" : ""}>${sendLabel}</button>
+          </form>
+        </section>
+      </div>
+    </div>
+  `, "chat-main");
+}
+
+function chatThreadInner() {
+  const sess = state.chat.session;
+  const messages = (sess && sess.messages) || [];
+  if (!messages.length) {
+    if (state.chat.current && !sess) {
+      return `<div class="chat-empty"><h2>Loading…</h2></div>`;
+    }
+    const who = selectedChatProvider().label;
+    return `<div class="chat-empty">
+      <h2>Ask ${esc(who)}</h2>
+      <p>This chat can read its own workspace. Anything that would change data or send something becomes a card. Nothing happens until you approve it, and DAP never sees the CLI login.</p>
+    </div>`;
+  }
+  return messages.map((m) => {
+    if (m.role === "user") {
+      return `<div class="chat-row user"><div class="chat-bubble">${esc(m.text)}</div></div>`;
+    }
+    const tools = (m.tools || []).map((t) => {
+      const detail = t.detail ? ` · ${esc(t.detail)}` : "";
+      const label = t.blocked ? "Not run" : esc(t.name || "Tool");
+      return `<div class="chat-tool${t.blocked ? " blocked" : ""}"><span class="chat-tool-dot"></span>${t.blocked ? "Not run · " + esc(t.name || "Tool") : label}${detail}</div>`;
+    }).join("");
+    const cards = (m.cards || []).map((id) => chatCardHTML(state.chat.cards[id] || { id, title: "Approval card", status: "pending" })).join("");
+    const body = m.text ? `<div class="chat-md">${renderMarkdown(m.text)}</div>` : (m.pending ? `<div class="chat-md chat-waiting">Thinking…</div>` : "");
+    const err = m.error ? `<p class="chat-error">${esc(m.error)}</p>` : "";
+    const cancelled = m.cancelled ? `<p class="chat-note">Stopped</p>` : "";
+    return `<div class="chat-row assistant"><div class="chat-bubble">${tools}${body}${cards}${err}${cancelled}</div></div>`;
+  }).join("");
+}
+
+function chatCardHTML(card) {
+  if (!card) return "";
+  const effects = (card.effects || []).map((e) => `<span class="pill ${esc(e)}">${esc(e)}</span>`).join(" ");
+  const kind = card.kind === "change" ? `<span class="pill change">Change</span>` : "";
+  const pending = !card.status || card.status === "pending" || card.status === "snoozed";
+  const summary = card.result && card.result.summary ? card.result.summary : (card.summary || "");
+  const actions = pending
+    ? `<button type="button" class="primary" data-act="approve" data-id="${esc(card.id)}">Approve</button><a class="ghost chat-inbox" href="#/inbox">Open in inbox</a>`
+    : `<span class="pill">${esc(card.status)}</span>`;
+  const body = card.body ? `<div class="body chat-card-body">${esc(card.body)}</div>` : "";
+  return `<article class="card chat-card">
+    <header class="row"><div style="flex:1"><h2>${esc(card.title || "Approval")}</h2><div class="who">Chat · needs approval</div></div><div class="inline">${kind}${effects}</div></header>
+    ${summary ? `<p class="summary">${esc(summary)}</p>` : ""}
+    ${body}
+    <footer><div class="actions">${actions}</div></footer>
+  </article>`;
+}
+
+function renderMarkdown(src) {
+  let text = esc(src || "");
+  const blocks = [];
+  text = text.replace(/```([^\n]*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    blocks.push(`<pre class="chat-code"><code>${code.replace(/\n$/, "")}</code></pre>`);
+    return "\u0000" + (blocks.length - 1) + "\u0000";
+  });
+  text = text.replace(/`([^`]+)`/g, "<code>$1</code>");
+  text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+  text = text.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  text = text.replace(/(^|[\s(])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+  const lines = text.split("\n");
+  let html = "";
+  let list = "";
+  const flush = () => {
+    if (!list) return;
+    html += `<ul>${list}</ul>`;
+    list = "";
+  };
+  lines.forEach((line) => {
+    const holder = line.match(/^\u0000(\d+)\u0000$/);
+    if (holder) {
+      flush();
+      html += blocks[Number(holder[1])] || "";
+      return;
+    }
+    const item = line.match(/^\s*(?:[-*]|\d+\.)\s+(.*)$/);
+    if (item) {
+      list += `<li>${item[1]}</li>`;
+      return;
+    }
+    flush();
+    if (!line.trim()) {
+      html += "";
+      return;
+    }
+    html += `<p>${line}</p>`;
+  });
+  flush();
+  return html;
+}
+
+function paintChatThread() {
+  const thread = document.getElementById("chat-thread");
+  if (!thread) {
+    render();
+    return;
+  }
+  thread.innerHTML = chatThreadInner();
+  thread.scrollTop = thread.scrollHeight;
+}
+
+function applyChatEvent(ev) {
+  const sess = state.chat.session;
+  if (!sess) return;
+  const msgs = sess.messages || (sess.messages = []);
+  const last = msgs[msgs.length - 1];
+  if (!last || last.role !== "assistant") return;
+  if (ev.type === "text") {
+    last.text = (last.text || "") + (ev.delta || "");
+    last.pending = false;
+  } else if (ev.type === "tool") {
+    last.tools = last.tools || [];
+    last.tools.push({ name: ev.name, detail: ev.detail, blocked: !!ev.blocked });
+    last.pending = false;
+  } else if (ev.type === "proposal" && ev.card) {
+    state.chat.cards[ev.card.id] = ev.card;
+    last.cards = last.cards || [];
+    if (!last.cards.includes(ev.card.id)) last.cards.push(ev.card.id);
+    last.pending = false;
+  } else if (ev.type === "error") {
+    last.error = ev.message || "The turn failed";
+    last.pending = false;
+  } else if (ev.type === "done") {
+    if (ev.text) last.text = ev.text;
+    last.pending = false;
+  }
+}
+
+async function loadChat() {
+  const [prov, list] = await Promise.all([
+    api("/api/chat/providers"),
+    api("/api/chat/sessions"),
+  ]);
+  state.chat.providers = prov.providers || [];
+  if (!state.chat.provider) state.chat.provider = prov.provider || "claude-code";
+  state.chat.sessions = list.sessions || [];
+  if (state.chat.current && !state.chat.streaming) {
+    const one = await api("/api/chat/sessions/" + state.chat.current);
+    state.chat.session = one.session;
+    state.chat.cards = one.cards || {};
+  }
+  state.chat.loaded = true;
+}
+
+async function sendChat() {
+  const text = (state.chat.draft || "").trim();
+  if (!text || state.chat.streaming) return;
+  const provider = state.chat.provider || "claude-code";
+  state.chat.draft = "";
+  state.error = "";
+  try {
+    if (!state.chat.current) {
+      const created = await api("/api/chat/sessions", { method: "POST", body: { provider } });
+      state.chat.current = created.session.id;
+      state.chat.session = created.session;
+      state.chat.session.messages = [];
+      state.chat.cards = {};
+    }
+    const sess = state.chat.session;
+    sess.messages = sess.messages || [];
+    sess.messages.push({ role: "user", text, at: new Date().toISOString() });
+    sess.messages.push({ role: "assistant", text: "", tools: [], cards: [], pending: true });
+    if (sess.title === "New chat" || !sess.title) sess.title = text.slice(0, 60);
+    state.chat.streaming = true;
+    render();
+    const res = await fetch("/api/chat/sessions/" + encodeURIComponent(state.chat.current) + "/turn", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + DAP.token,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || "Request failed");
+    }
+    const reader = res.body && res.body.getReader ? res.body.getReader() : null;
+    if (!reader) throw new Error("This browser cannot stream the reply");
+    const dec = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const step = await reader.read();
+      if (step.done) break;
+      buf += dec.decode(step.value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, idx).trim();
+        buf = buf.slice(idx + 1);
+        if (!line) continue;
+        try { applyChatEvent(JSON.parse(line)); } catch (e) { continue; }
+        paintChatThread();
+      }
+    }
+  } catch (err) {
+    state.error = err.message;
+    const msgs = state.chat.session && state.chat.session.messages;
+    if (msgs && msgs.length) {
+      const last = msgs[msgs.length - 1];
+      if (last.role === "assistant") {
+        last.error = last.error || err.message;
+        last.pending = false;
+      }
+    }
+  } finally {
+    state.chat.streaming = false;
+    try { await loadChat(); } catch (e) { /* keep the local transcript */ }
+    render();
+  }
+}
+
+async function stopChat() {
+  if (!state.chat.current) return;
+  try {
+    await api("/api/chat/sessions/" + encodeURIComponent(state.chat.current) + "/cancel", { method: "POST", body: {} });
+  } catch (err) {
+    state.error = err.message;
+  }
+}
+
+function openChatSession(id) {
+  if (state.chat.streaming) return;
+  state.chat.current = id;
+  state.chat.session = null;
+  state.chat.focusComposer = true;
+  render();
+  loadChat().then(() => {
+    const sess = state.chat.session;
+    if (sess && sess.provider) state.chat.provider = sess.provider;
+    render();
+  }).catch((err) => {
+    state.error = err.message;
+    render();
+  });
+}
+
+function newChat() {
+  if (state.chat.streaming) return;
+  state.chat.current = "";
+  state.chat.session = null;
+  state.chat.cards = {};
+  state.chat.draft = "";
+  state.chat.focusComposer = true;
+  render();
+}
+
 function render() {
   if (state.quitting) return;
   const root = document.getElementById("app");
   if (!root) return;
   const html = {
     home: homeView,
+    chat: chatView,
     inbox: inboxView,
     activity: activityView,
     guardrails: guardView,
@@ -920,6 +1261,9 @@ function render() {
     connections: connectionsView,
     create: createView,
   }[state.route]();
+  const prevThread = document.getElementById("chat-thread");
+  const threadTop = prevThread ? prevThread.scrollTop : 0;
+  const stickThread = prevThread ? (prevThread.scrollHeight - prevThread.scrollTop - prevThread.clientHeight < 48) : true;
   const y = window.scrollY;
   root.innerHTML = html;
   if (state.scrollReset) {
@@ -932,6 +1276,13 @@ function render() {
   } else {
     window.scrollTo(0, y);
   }
+  const nextThread = document.getElementById("chat-thread");
+  if (nextThread) nextThread.scrollTop = stickThread ? nextThread.scrollHeight : threadTop;
+  if (state.chat.focusComposer) {
+    state.chat.focusComposer = false;
+    const box = root.querySelector(".chat-input");
+    if (box && !box.disabled) box.focus({ preventScroll: true });
+  }
   if (state.focusSelector) {
     const el = root.querySelector(state.focusSelector);
     if (el) el.focus({ preventScroll: true });
@@ -941,7 +1292,9 @@ function render() {
 
 async function refresh() {
   if (state.quitting || state.quitConfirm || state.quitPending) return;
+  if (state.chat.streaming) return;
   try {
+    if (state.route === "chat") await loadChat();
     if (state.route === "home" || !state.data.home) {
       state.data.home = await api("/api/home");
     }
@@ -1174,6 +1527,22 @@ document.addEventListener("click", (ev) => {
     focusEl("[data-act=quit]");
   } else if (actName === "confirm-quit") {
     doQuit();
+  } else if (actName === "chat-new") {
+    newChat();
+  } else if (actName === "chat-open") {
+    openChatSession(el.dataset.id);
+  } else if (actName === "chat-provider") {
+    const next = el.dataset.provider;
+    const had = state.chat.session && state.chat.session.messages && state.chat.session.messages.length;
+    state.chat.provider = next;
+    api("/api/settings", { method: "PUT", body: { chat: { provider: next } } }).catch((err) => {
+      state.error = err.message;
+      render();
+    });
+    if (had && state.chat.session.provider !== next) newChat();
+    else render();
+  } else if (actName === "chat-stop") {
+    stopChat();
   } else if (actName === "confirm-install") {
     act("install", async () => {
       await api("/api/plugins/install", { method: "POST", body: { path: state.installPath, approve: true } });
@@ -1197,6 +1566,10 @@ document.addEventListener("submit", (ev) => {
     act("edit", () => api("/api/inbox/" + form.dataset.id + "/edit", { method: "POST", body }));
   } else if (kind === "save-reject") {
     act("reject", () => api("/api/inbox/" + form.dataset.id + "/reject", { method: "POST", body: { reason: form.reason.value } }));
+  } else if (kind === "chat-send") {
+    const box = form.querySelector(".chat-input");
+    if (box) state.chat.draft = box.value;
+    sendChat();
   } else if (kind === "create-start") {
     state.create.description = form.description.value.trim();
     if (form.name) state.create.name = form.name.value.trim();
@@ -1327,7 +1700,25 @@ document.addEventListener("drop", (ev) => {
   state.dragging = false;
 });
 
+document.addEventListener("input", (ev) => {
+  if (ev.target.classList && ev.target.classList.contains("chat-input")) {
+    state.chat.draft = ev.target.value;
+  }
+});
+
 document.addEventListener("keydown", (ev) => {
+  if ((ev.ctrlKey || ev.metaKey) && ev.shiftKey && (ev.key === "c" || ev.key === "C")) {
+    if (state.quitting) return;
+    ev.preventDefault();
+    if (state.route !== "chat") {
+      state.chat.focusComposer = true;
+      location.hash = "#/chat";
+    } else {
+      const box = document.querySelector(".chat-input");
+      if (box) box.focus();
+    }
+    return;
+  }
   if (state.quitConfirm) {
     if (ev.key === "Escape") {
       state.quitConfirm = null;
@@ -1387,6 +1778,18 @@ document.addEventListener("keydown", (ev) => {
   }
   if (ev.target.closest && ev.target.closest(".drag-handle")) {
     reorderKeys(ev);
+    return;
+  }
+  if (state.route === "chat") {
+    if (ev.key === "Escape" && state.chat.streaming) {
+      ev.preventDefault();
+      stopChat();
+    }
+    if (ev.target.classList && ev.target.classList.contains("chat-input") && ev.key === "Enter" && !ev.shiftKey) {
+      ev.preventDefault();
+      state.chat.draft = ev.target.value;
+      sendChat();
+    }
     return;
   }
   if (state.route !== "inbox") return;
@@ -1471,6 +1874,7 @@ async function pollCreate() {
 window.addEventListener("hashchange", () => {
   if (state.quitting) return;
   state.route = routeFromHash();
+  if (state.route === "chat") state.chat.focusComposer = true;
   state.mode = null;
   state.quitConfirm = null;
   state.splitOpen = false;
@@ -1528,7 +1932,7 @@ setInterval(() => { pollCreate(); }, 800);
 syncLayout();
 syncTheme();
 setInterval(() => {
-  if (document.hidden || state.dragging || state.themeOpen) return;
+  if (document.hidden || state.dragging || state.themeOpen || state.chat.streaming) return;
   if (state.quitting || state.quitConfirm || state.quitPending) return;
   if (state.mode && (state.mode.type === "edit" || state.mode.type === "reject" || state.mode.type === "snooze")) return;
   const ae = document.activeElement;

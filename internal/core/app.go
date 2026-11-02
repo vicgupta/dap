@@ -58,6 +58,7 @@ type App struct {
 	busy         map[string]int
 	shutOnce     sync.Once
 	shutErr      error
+	chatSys      *chatSystem
 }
 
 type runtime struct {

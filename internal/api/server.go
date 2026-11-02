@@ -118,6 +118,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /{$}", s.index)
 	mux.HandleFunc("GET /api/settings", s.auth(s.getSettings))
 	mux.HandleFunc("PUT /api/settings", s.auth(s.putSettings))
+	mux.HandleFunc("GET /api/chat/providers", s.auth(s.chatProviders))
+	mux.HandleFunc("GET /api/chat/sessions", s.auth(s.chatSessions))
+	mux.HandleFunc("POST /api/chat/sessions", s.auth(s.chatCreate))
+	mux.HandleFunc("GET /api/chat/sessions/{id}", s.auth(s.chatGet))
+	mux.HandleFunc("POST /api/chat/sessions/{id}/turn", s.auth(s.chatTurn))
+	mux.HandleFunc("POST /api/chat/sessions/{id}/cancel", s.auth(s.chatCancel))
 	mux.HandleFunc("GET /api/home", s.auth(s.home))
 	mux.HandleFunc("GET /api/inbox", s.auth(s.inbox))
 	mux.HandleFunc("POST /api/inbox/{id}/approve", s.auth(s.approve))
@@ -184,10 +190,12 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
+	cfg := s.App.ChatConfig()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":     true,
 		"theme":  s.App.Theme(),
 		"layout": s.App.Layout(),
+		"chat":   cfg,
 	})
 }
 
@@ -195,6 +203,9 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Theme  *string          `json:"theme"`
 		Layout *layout.Settings `json:"layout"`
+		Chat   *struct {
+			Provider string `json:"provider"`
+		} `json:"chat"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeErr(w, err)
@@ -218,7 +229,16 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		prefs = next
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "theme": mode, "layout": prefs})
+	chatCfg := s.App.ChatConfig()
+	if body.Chat != nil {
+		next, err := s.App.SetChatProvider(body.Chat.Provider)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		chatCfg.Provider = next
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "theme": mode, "layout": prefs, "chat": chatCfg})
 }
 
 func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
@@ -886,7 +906,7 @@ func writeErr(w http.ResponseWriter, err error) {
 		code = http.StatusNotFound
 	case errors.Is(err, core.ErrDenied), errors.Is(err, core.ErrBlocked):
 		code = http.StatusForbidden
-	case errors.Is(err, core.ErrBadState):
+	case errors.Is(err, core.ErrBadState), errors.Is(err, core.ErrBusy):
 		code = http.StatusConflict
 	}
 	writeJSON(w, code, map[string]any{"ok": false, "error": err.Error()})

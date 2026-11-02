@@ -121,6 +121,9 @@ Kinds the core writes today:
 | `mail.connect`, `mail.disconnect`, `mail.sent`, `mail.undo` | Mailbox connection changes and sends. Allowed mail reads and drafts are not logged. Messages do not include the API key or a connection id |
 | `connect.exec` | A generic Composio tool ran with a send, spend, or delete effect. The tool slug is recorded. Arguments are not |
 | `plugin.stop` | Quit asked the plugin to `shutdown`, or stopped it after the drain timeout |
+| `chat.session` | A chat was started. The row names the provider, not the transcript |
+| `chat.turn` | A turn finished. The message is the provider and a short snippet of what you asked |
+| `chat.cancel` | You stopped a turn, or quit while one was running |
 
 `plugin.stop` is written when DAP quits. Removing one plugin with `da plugin remove` still does not append a row.
 
@@ -182,7 +185,7 @@ Mode `0700` on the directory. JSON state files are mode `0600`.
 
 | Path | Role |
 | --- | --- |
-| `config.json` | `addr`, and `layout` once a view is changed. Created by `da init`. Default address `127.0.0.1:7391`. Other keys in the file are kept. |
+| `config.json` | `addr`, `theme`, `layout`, and `chat` (the last coding CLI). Created by `da init`. Default address `127.0.0.1:7391`. A settings write updates one key and keeps the others. |
 | `state.json` | Installed plugins, config, schedule cursor, tiles, metrics, cards, guardrail rules, plugin scratch state. |
 | `ledger.jsonl` | Append-only activity. |
 | `secrets.json` | File backend only. |
@@ -192,6 +195,8 @@ Mode `0700` on the directory. JSON state files are mode `0600`.
 | `browser-profile/` | Private Chrome, Edge, or Chromium profile for the `da run` window. Quit can close that process without closing other browser windows. |
 | `mail/public.json` | Direct-path client ids and the composio/direct choice. Not a token and not the Composio API key. Mode `0600`. |
 | `mail/fake.json` | Demo mailbox threads and connection flag. |
+| `chat/sessions/<id>.json` | One chat transcript. Mode `0600`. |
+| `chat/work/<id>/` | The read-only working directory for that chat's CLI. Not the data directory. |
 | `composio/toolkits.json` | Optional extra Composio toolkits. Not a secret. Refused if it contains an API key or connection id. Mode `0600`. |
 
 `state.json` keeps cards after `da plugin remove`. The ledger is never trimmed. There is no export command.
@@ -226,7 +231,7 @@ What they cover:
 - macOS keychain writes pass the secret on `security`'s argv. Use `DAP_SECRETS=file` if that matters. Linux `secret-tool` can block on a keyring prompt until the 3 second timeout, and then the file backend is used.
 - Semver in manifests has no pre-release or build metadata.
 - `every` cannot express days. Cron has no seconds field and no descriptors such as `@daily`.
-- The core detects coding agents and does not launch them.
+- Chat launches Claude Code (`claude -p`) and Codex (`codex exec`) only. OpenCode is detected and not launched. The CLI working directory is a per-session folder, not the data directory. See [chat.md](chat.md).
 - `da version` prints the core version. A release build also prints `release`, `commit`, and `date`. Home and `da doctor` still report `version`.
 - `da serve` ignores arguments it does not recognize.
 - `da check` exits `0` when the decision is `never` or `ask_first`. Read `ok` and `decision`. The plugin HTTP API uses status 403 for those decisions.

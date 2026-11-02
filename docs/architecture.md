@@ -44,7 +44,7 @@ The admin API used by the UI and the CLI, all under the admin token:
 | Method | Path |
 | --- | --- |
 | GET | `/api/home`, `/api/inbox`, `/api/activity`, `/api/guardrails`, `/api/plugins`, `/api/doctor`, `/api/approved`, `/api/connections` |
-| GET, PUT | `/api/settings` with `theme` (`system`, `light`, `dark`) and `layout` (view, density, order, pinned, collapsed, sizes). Either key may be omitted. |
+| GET, PUT | `/api/settings` with `theme` (`system`, `light`, `dark`), `layout` (view, density, order, pinned, collapsed, sizes), and `chat` (`provider`: `claude-code` or `codex`). Any key may be omitted. |
 | GET | `/api/context` and `/api/context?plugin=<name>` |
 | POST | `/api/inbox/{id}/approve`, `edit`, `reject`, `snooze` |
 | POST | `/api/guardrails` with `plugin`, `permission`, `decision` |
@@ -57,6 +57,8 @@ The admin API used by the UI and the CLI, all under the admin token:
 | POST | `/api/create/run/{id}/cancel` |
 | GET | `/api/quit-status` — whether plugins are running and whether an action is in flight |
 | POST | `/api/quit` — admin token, loopback peer, `X-DAP-Request: quit`, POST only. Starts the shutdown above |
+| GET | `/api/chat/providers`, `/api/chat/sessions`, `/api/chat/sessions/{id}` |
+| POST | `/api/chat/sessions`, `/api/chat/sessions/{id}/turn` (newline-delimited JSON), `/api/chat/sessions/{id}/cancel` |
 | GET | `/plugins/{name}/` redirects to that plugin's loopback origin |
 
 Plugin API routes (suffixes of `api_base`, which is `http://127.0.0.1:<port>/v1/<plugin>`):
@@ -103,4 +105,4 @@ Inter is bundled for the UI under the SIL Open Font License (`internal/web/stati
 
 ## What the core does not do
 
-DAP does not call Claude, Codex, or OpenCode. Doctor only reports whether those names are on `PATH`. DAP does not send operating-system notifications. It sends mail only when a plugin calls `/mail/send` and an approved card covers that send. It does not ship a native window toolkit.
+Chat can launch the Claude Code or Codex CLI you already installed. It does not host a model, does not read those CLIs' credentials, and does not run OpenCode. Doctor still only reports whether `claude`, `codex`, and `opencode` are on `PATH`. See [chat.md](chat.md). DAP does not send operating-system notifications. It sends mail only when a plugin calls `/mail/send` and an approved card covers that send. A chat "send" card does not transmit anything. It does not ship a native window toolkit.
