@@ -77,6 +77,10 @@ func (a *App) commitPluginChange(card model.Card, approve bool) (model.Card, err
 		card.Status = model.StatusApproved
 		card.Actor = model.ActorUser
 		card.Reason = preapprovedReason
+		card.Body = strings.Replace(card.Body,
+			"Approving installs or reloads this plugin. Nothing runs until you approve.",
+			"Pre-approved at create. DAP installs this plugin because every check passed.",
+			1)
 	}
 	if err := a.store.Update(func(st *store.State) error {
 		st.Cards = append(st.Cards, card)

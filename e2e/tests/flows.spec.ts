@@ -95,7 +95,7 @@ test("create job survives reload and auto-installs", async ({ page }, testInfo) 
   await page.getByRole("checkbox", { name: /Install automatically when created/ }).check();
   await page.getByRole("button", { name: "Create", exact: true }).click();
   await expect(page.getByRole("button", { name: "Retry" })).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText(/Nothing was installed|starter/)).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText("starter");
   const failed = await jobNow(page);
   expect(failed.status).toBe("failed");
   expect(failed.id).toBeTruthy();
