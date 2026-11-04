@@ -1,12 +1,13 @@
 #!/bin/sh
-# Install the DAP CLI from the private GitHub repo into the current directory.
-# One-time setup: gh auth login
+# Install the DAP CLI into the current directory.
 #
-#   gh release download v0.1.0-alpha.4 --repo vicgupta/dap --pattern install.sh && sh install.sh
+#   curl -fsSL -o install.sh https://raw.githubusercontent.com/vicgupta/dap/main/scripts/install.sh
+#   sh install.sh
 #   ./da run
 #
 # Does not change PATH and does not use sudo.
 # Set DAP_INSTALL_DIR, or pass --dir DIR, to install somewhere else.
+# Downloads and the da binary stay in that folder. Data stays in ./.dap there.
 set -eu
 
 REPO="${DAP_REPO:-vicgupta/dap}"
@@ -39,13 +40,8 @@ if [ -z "$dest" ] || [ "$dest" = "." ]; then
   dest=$(pwd)
 fi
 
-if ! command -v gh >/dev/null 2>&1; then
-  echo "GitHub CLI (gh) is required. Install it, then run: gh auth login" >&2
-  exit 1
-fi
-
-if ! gh auth status >/dev/null 2>&1; then
-  echo "gh is not logged in. Run: gh auth login" >&2
+if ! command -v curl >/dev/null 2>&1; then
+  echo "curl is required to download DAP." >&2
   exit 1
 fi
 
@@ -73,14 +69,17 @@ else
   cli_tar="da-${VER}-linux-${goarch}.tar.gz"
 fi
 
-workdir=$(mktemp -d)
+workdir="${dest}/.dap/tmp/install.$$"
+mkdir -p "$workdir"
 trap 'rm -rf "$workdir"' EXIT
 
-echo "Downloading ${TAG} ($(uname -s) ${goarch}) from ${REPO}"
-if ! gh release download "$TAG" --repo "$REPO" \
-  --dir "$workdir" \
-  --pattern checksums.txt \
-  --pattern "$cli_tar"; then
+base="https://github.com/${REPO}/releases/download/${TAG}"
+echo "Downloading ${TAG} ($(uname -s) ${goarch}) from ${base}"
+if ! curl -fsSL -o "$workdir/checksums.txt" "${base}/checksums.txt"; then
+  echo "Could not download checksums.txt from ${TAG}." >&2
+  exit 1
+fi
+if ! curl -fsSL -o "$workdir/$cli_tar" "${base}/${cli_tar}"; then
   echo "Could not download ${cli_tar} from ${TAG}." >&2
   exit 1
 fi
@@ -129,14 +128,11 @@ else
   echo "Run it with:"
   echo "  \"${dest}/da\" run"
 fi
+echo "Data stays in ./.dap in the folder where you run da."
 if [ -n "${DAP_HOME:-}" ]; then
-  echo "Data directory: ${DAP_HOME}"
-else
-  echo "Data directory: ${HOME}/.dap"
+  echo "DAP_HOME is set (${DAP_HOME}). A relative value is resolved from that folder."
 fi
 echo
 echo "This installer does not change PATH and does not use sudo."
-echo "To run da from any folder, add this directory to PATH yourself:"
-echo "  export PATH=\"${dest}:\$PATH\""
 echo
 echo "./da run opens the URL in the default browser. Chrome is not required. ./da run --no-browser only prints the URL."

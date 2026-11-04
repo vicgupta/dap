@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/vicgupta/dap/internal/rundir"
 )
 
 // Host supervises plugin processes. Each plugin is one process.
@@ -328,7 +330,15 @@ func (h *Host) Interface(name string) string {
 }
 
 // PluginEnv builds a small environment for a plugin process.
+// Temp files and npm and pip caches stay in the parent environment.
+// PluginEnvIn points those at a data directory.
 func PluginEnv(extra ...string) []string {
+	return PluginEnvIn("", extra...)
+}
+
+// PluginEnvIn is PluginEnv with temp and caches inside dataDir.
+// HOME is passed through when the parent set it. dataDir empty skips the redirect.
+func PluginEnvIn(dataDir string, extra ...string) []string {
 	keep := []string{"PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "LOCALAPPDATA", "USERPROFILE"}
 	env := []string{"PYTHONUNBUFFERED=1", "PYTHONIOENCODING=utf-8"}
 	for _, k := range keep {
@@ -337,5 +347,9 @@ func PluginEnv(extra ...string) []string {
 		}
 	}
 	env = append(env, extra...)
+	if dataDir != "" {
+		_ = rundir.Ensure(dataDir)
+		env = rundir.Apply(env, dataDir)
+	}
 	return env
 }

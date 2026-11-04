@@ -42,7 +42,7 @@ This zip contains:
   DAP.cmd    double-click to run the UI (same as: da.exe run)
   plugins\\  example plugins (need Python: python or py)
 
-Data stays in %USERPROFILE%\\.dap, or in %DAP_HOME% when that is set.
+Data stays in .\\.dap in this folder, or in %DAP_HOME% when that is set (a relative value is resolved from this folder).
 
 install.ps1 copies da.exe into the current directory, unblocks that copy,
 and does not change PATH. From that directory:

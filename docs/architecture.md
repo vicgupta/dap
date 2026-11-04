@@ -95,7 +95,7 @@ A missing or wrong bearer token is HTTP 401. Bodies are limited to 1 MiB.
 
 ## Plugin processes
 
-The host starts one process per plugin. The working directory is the plugin directory. The environment keeps `PATH`, `HOME`, `USER`, `LOGNAME`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TZ`, `SYSTEMROOT`, `WINDIR`, `TEMP`, `TMP`, `LOCALAPPDATA`, and `USERPROFILE` when they are set, plus `PYTHONUNBUFFERED=1`, `PYTHONIOENCODING=utf-8`, `DAP_PLUGIN`, `DAP_API`, and `DAP_TOKEN`. Other parent variables are not passed in.
+The host starts one process per plugin. The working directory is the plugin directory. The environment keeps `PATH`, `HOME`, `USER`, `LOGNAME`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TZ`, `SYSTEMROOT`, and `WINDIR` when they are set, plus `PYTHONUNBUFFERED=1`, `PYTHONIOENCODING=utf-8`, `DAP_PLUGIN`, `DAP_API`, and `DAP_TOKEN`. `TMPDIR`, `TEMP`, and `TMP` point at `./.dap/tmp`. `npm_config_cache` and `PIP_CACHE_DIR` point at `./.dap/cache`. Other parent variables are not passed in.
 
 On Unix the process is in its own group so stop can signal the group. The host writes one JSON-RPC request at a time and reads responses by `id`. Non-JSON stdout is kept with stderr. The stderr tail is capped around 8 KiB. `initialize` waits up to 20 seconds. A run's `watch` and `propose` share a 60 second budget. `report` waits 15 seconds. `act` waits 45 seconds. `shutdown` waits 3 seconds and is sent only when that plugin has no call in progress.
 

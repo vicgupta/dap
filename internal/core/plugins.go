@@ -291,7 +291,7 @@ func (a *App) startOne(name string) error {
 		rt.NeedsApproval = false
 		rt.StartError = ""
 	})
-	env := pluginhost.PluginEnv("DAP_PLUGIN="+name, "DAP_API="+apiBase, "DAP_TOKEN="+token)
+	env := pluginhost.PluginEnvIn(a.DataDir, "DAP_PLUGIN="+name, "DAP_API="+apiBase, "DAP_TOKEN="+token)
 	if err := a.host.Start(pluginhost.Options{Name: name, Dir: rec.Dir, Argv: argv, Env: env}); err != nil {
 		a.failStart(name, err)
 		return err

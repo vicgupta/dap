@@ -140,10 +140,11 @@ func (a *App) StartAgent(req AgentStart) (AgentRun, error) {
 	go func() {
 		defer close(job.done)
 		err := agentrun.Run(ctx, agentrun.Request{
-			Agent:  req.Agent,
-			Dir:    abs,
-			Prompt: prompt,
-			OnLine: func(line string) { a.appendJob(job, line) },
+			Agent:   req.Agent,
+			Dir:     abs,
+			DataDir: a.DataDir,
+			Prompt:  prompt,
+			OnLine:  func(line string) { a.appendJob(job, line) },
 		})
 		a.mu.Lock()
 		defer a.mu.Unlock()
@@ -216,7 +217,7 @@ func (a *App) ValidateDraft(dir, plugin string) (pluginauthor.Report, error) {
 	if err != nil {
 		return pluginauthor.Report{}, err
 	}
-	return pluginauthor.Validate(abs), nil
+	return pluginauthor.ValidateIn(abs, a.DataDir), nil
 }
 
 func (a *App) resolveCreateDir(dir, plugin string) (string, error) {
@@ -247,7 +248,7 @@ func (a *App) ProposePluginChange(dir, plugin string) (model.Card, error) {
 			return model.Card{}, err
 		}
 	}
-	rep := pluginauthor.Validate(abs)
+	rep := pluginauthor.ValidateIn(abs, a.DataDir)
 	if !rep.OK {
 		return model.Card{}, fmt.Errorf("plugin did not pass validation")
 	}

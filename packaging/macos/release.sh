@@ -118,7 +118,7 @@ DAP ${version} for macOS
 ===========================
 
 This zip contains DAP.app. Double-clicking it runs \`da run\` and opens the
-local UI. Your data stays in ~/.dap (or \$DAP_HOME if you set it). The da
+local UI. Your data stays in ./.dap in the working directory (or \$DAP_HOME if you set it). The da
 command-line binary is inside the app:
 
   DAP.app/Contents/MacOS/da
@@ -222,15 +222,15 @@ chmod 755 "$out/install.sh"
 ) | sort -k2 > "$out/checksums.txt"
 
 cat > "$root/dist/NOTES.md" << EOF
-macOS pre-release of DAP (\`${tag}\`). Ad-hoc signed, not notarized. Private GitHub release.
-
-One-time: \`gh auth login\`
+macOS pre-release of DAP (\`${tag}\`). Ad-hoc signed, not notarized.
 
 \`\`\`bash
-gh release download ${tag} --repo vicgupta/dap --pattern install.sh && sh install.sh
+curl -fsSL -o install.sh https://raw.githubusercontent.com/vicgupta/dap/main/scripts/install.sh
+sh install.sh
+./da run
 \`\`\`
 
-\`install.sh\` uses that gh login, checks SHA256, copies \`da\` into the current directory, and clears the quarantine flag on that binary. It does not change PATH. Run \`./da run\`. Data stays in ~/.dap or \$DAP_HOME.
+\`install.sh\` checks SHA256, copies \`da\` into the current directory, and clears the quarantine flag on that binary. It does not change PATH. Data stays in ./.dap in that folder. A relative \$DAP_HOME is resolved from the folder.
 
 Direct downloads are on this release. Apple Silicon: \`DAP-${version}-macos-arm64.zip\` and \`da-${version}-darwin-arm64.tar.gz\`. Intel: the amd64 files. Universal: \`DAP-${version}-macos-universal.zip\` and \`da-${version}-darwin-universal.tar.gz\`. Checksums are in \`checksums.txt\`.
 

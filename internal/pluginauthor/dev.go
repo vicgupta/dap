@@ -14,7 +14,7 @@ import (
 
 // Dev runs one plugin, reloads it when a file in the directory changes, and
 // writes one JSON object per line to w.
-func Dev(ctx context.Context, dir string, w io.Writer) error {
+func Dev(ctx context.Context, dir, dataDir string, w io.Writer) error {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return err
@@ -43,7 +43,7 @@ func Dev(ctx context.Context, dir string, w io.Writer) error {
 			return err
 		}
 		host.Stop(m.Name)
-		if err := host.Start(pluginhost.Options{Name: m.Name, Dir: abs, Argv: argv, Env: pluginhost.PluginEnv("DAP_PLUGIN=" + m.Name)}); err != nil {
+		if err := host.Start(pluginhost.Options{Name: m.Name, Dir: abs, Argv: argv, Env: pluginhost.PluginEnvIn(dataDir, "DAP_PLUGIN="+m.Name)}); err != nil {
 			emit("error", map[string]any{"detail": err.Error()})
 			return err
 		}

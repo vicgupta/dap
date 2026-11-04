@@ -7,9 +7,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/vicgupta/dap/internal/rundir"
 )
 
-func prepareBuild(dir string) (string, error) {
+func prepareBuild(dir, dataDir string) (string, error) {
 	raw, err := os.ReadFile(filepath.Join(dir, "package.json"))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -32,9 +34,17 @@ func prepareBuild(dir string) (string, error) {
 	if _, err := exec.LookPath("node"); err != nil {
 		return "", fmt.Errorf("node is not on PATH. Install Node.js 20 or newer from https://nodejs.org, or install Bun from https://bun.sh and set runtime: bun")
 	}
+	var env []string
+	if dataDir != "" {
+		if err := rundir.Ensure(dataDir); err != nil {
+			return "", err
+		}
+		env = rundir.Apply(os.Environ(), dataDir)
+	}
 	if st, err := os.Stat(filepath.Join(dir, "node_modules", "typescript")); err != nil || !st.IsDir() {
 		cmd := exec.Command("npm", "install", "--silent")
 		cmd.Dir = dir
+		cmd.Env = env
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			return "", fmt.Errorf("npm install: %w\n%s", err, trimOut(out))
@@ -42,6 +52,7 @@ func prepareBuild(dir string) (string, error) {
 	}
 	cmd := exec.Command("npm", "run", "build", "--silent")
 	cmd.Dir = dir
+	cmd.Env = env
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("npm run build: %w\n%s", err, trimOut(out))

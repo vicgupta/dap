@@ -4,35 +4,26 @@ v0.1.0-alpha.1 is a private GitHub pre-release built from `main` `546a2e1`. That
 
 The release workflow on this branch, once it is on `main`, builds macOS, Linux, and Windows for a later `v*` tag. Themes (PR #4) and the plugin creator (PR #5) are not in v0.1.0-alpha.1.
 
-The repo is private. Downloads use your GitHub login. `install.sh` and `install.ps1` call `gh release download`, which uses the login from `gh auth login`. The scripts do not embed a token and do not prompt for one.
-
-## One-time login
-
-```bash
-gh auth login
-```
+Downloads are public HTTPS. `install.sh` and `install.ps1` use `curl` or `Invoke-WebRequest` against `https://github.com/vicgupta/dap/releases/download/<tag>/`. They do not use the `gh` CLI. `/releases/latest/download/` skips pre-releases, so the scripts use the tag. They copy `da` into the current folder, check SHA256, and keep data in `./.dap` in that folder.
 
 ## v0.1.0-alpha.1 (macOS)
 
 Release page: <https://github.com/vicgupta/dap/releases/tag/v0.1.0-alpha.1>
 
-```bash
-gh release download v0.1.0-alpha.1 --repo vicgupta/dap --pattern install.sh && sh install.sh
-```
+That tag's installer is not the current one. Current installs use the commands in the README. They copy `da` into the folder you run them from and keep data in `./.dap`.
 
-The script picks arm64 or amd64 from `uname -m`, checks SHA256 against `checksums.txt`, and installs:
+v0.1.0-alpha.1 shipped a macOS app and CLI with this layout:
 
 | Piece | Location |
 | --- | --- |
-| `DAP.app` | `/Applications` when that folder is writable, otherwise `~/Applications` |
-| `da` | `~/.local/bin/da` |
+| `DAP.app` | inside the downloaded zip |
+| `da` | inside the downloaded archive |
 
-Add `~/.local/bin` to `PATH` if it is not already there. Double-click `DAP.app` to run `da run`. Data stays in `~/.dap`, or in `$DAP_HOME` when that is set. The script clears `com.apple.quarantine` on the app and the CLI.
-
-Direct download of one file:
+Direct download of one file, into the current folder:
 
 ```bash
-gh release download v0.1.0-alpha.1 --repo vicgupta/dap --pattern DAP-0.1.0-alpha.1-macos-arm64.zip --pattern checksums.txt
+curl -fsSL -o checksums.txt https://github.com/vicgupta/dap/releases/download/v0.1.0-alpha.1/checksums.txt
+curl -fsSL -o DAP-0.1.0-alpha.1-macos-arm64.zip https://github.com/vicgupta/dap/releases/download/v0.1.0-alpha.1/DAP-0.1.0-alpha.1-macos-arm64.zip
 grep DAP-0.1.0-alpha.1-macos-arm64.zip checksums.txt | shasum -a 256 -c -
 ```
 
@@ -68,17 +59,18 @@ xattr -dr com.apple.quarantine DAP.app
 `install.sh` and `install.ps1` copy the `da` CLI into the directory where you run them (or `DAP_INSTALL_DIR`, `--dir`, or `-InstallDir`). They check SHA256, do not change `PATH`, and do not use sudo or an administrator prompt. On macOS, `install.sh` runs `xattr -d com.apple.quarantine` on the copied binary. On Windows, `install.ps1` runs `Unblock-File` on `da.exe`.
 
 ```bash
-gh release download <tag> --repo vicgupta/dap --pattern install.sh && sh install.sh
+curl -fsSL -o install.sh https://raw.githubusercontent.com/vicgupta/dap/main/scripts/install.sh
+sh install.sh
 ./da run
 ```
 
 ```powershell
-gh release download <tag> --repo vicgupta/dap --pattern install.ps1
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/vicgupta/dap/main/scripts/install.ps1 -OutFile .\install.ps1
 powershell -ExecutionPolicy Bypass -Scope Process -File .\install.ps1
 .\da.exe run
 ```
 
-`-Scope Process` changes execution policy only for that PowerShell process. Data stays in `~/.dap`, `%USERPROFILE%\.dap`, or `$DAP_HOME`. To run `da` from another directory, add the folder to `PATH` yourself. The scripts print that command and do not run it.
+`-Scope Process` changes execution policy only for that PowerShell process. Data stays in `./.dap` in that folder. A relative `$DAP_HOME` is resolved from the folder. The scripts do not change `PATH`.
 
 v0.1.0-alpha.4 ships the macOS `da` tarballs and Windows `da.exe` zips (`da-<version>-windows-amd64.zip` and `da-<version>-windows-arm64.zip`, each containing only `da.exe`). It does not ship Linux archives or `DAP.app`.
 
@@ -103,32 +95,26 @@ v0.1.0-alpha.4 ships the macOS `da` tarballs and Windows `da.exe` zips (`da-<ver
 ### Linux
 
 ```bash
-gh release download <tag> --repo vicgupta/dap --pattern install.sh && sh install.sh
+curl -fsSL -o install.sh https://raw.githubusercontent.com/vicgupta/dap/main/scripts/install.sh
+sh install.sh
+./da run
 ```
 
-On Linux, `install.sh` copies `da` into the current directory. It does not change `PATH`. Run `./da run` from that directory. The archive also contains `dap` and `plugins/` if you want to copy those yourself. `dap` runs `da run`, and both commands have to stay in the same directory.
+On Linux, `install.sh` copies `da` into the current directory. It does not change `PATH`. Run `./da run` from that directory. Data stays in `./.dap`. The archive also contains `dap` and `plugins/` if you want to copy those yourself, still inside this folder. `dap` runs `da run`, and both commands have to stay in the same directory.
 
-The `.deb` is a separate install path, and it needs `sudo`. `install.sh` does not:
-
-```bash
-gh release download <tag> --repo vicgupta/dap --pattern 'dap_*_amd64.deb' --pattern checksums.txt
-grep amd64.deb checksums.txt | sha256sum -c -
-sudo dpkg -i dap_*_amd64.deb
-```
-
-Use the arm64 deb on arm64. Plugins from the package are in `/usr/share/dap/plugins`.
+The `.deb` packages are built for a system install. `install.sh` does not use them. The install that stays in this folder is the script above.
 
 `dap` opens the URL in the default browser (`xdg-open` on Linux). Chrome is not required. `--no-browser` only prints the URL.
 
 ### Windows
 
 ```powershell
-gh release download <tag> --repo vicgupta/dap --pattern install.ps1
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/vicgupta/dap/main/scripts/install.ps1 -OutFile .\install.ps1
 powershell -ExecutionPolicy Bypass -Scope Process -File .\install.ps1
 .\da.exe run
 ```
 
-The script copies `da.exe` into the current directory (a normal user folder; not Program Files), runs `Unblock-File` on that copy, and does not change the user or system `PATH`. It does not write HKLM, install a service, or ask for elevation. Data stays in `%USERPROFILE%\.dap`, or in `%DAP_HOME%`.
+The script copies `da.exe` into the current directory (a normal user folder; not Program Files), runs `Unblock-File` on that copy, and does not change the user or system `PATH`. It does not write HKLM, install a service, or ask for elevation. Data stays in `.\.dap` in that folder, or in a relative `%DAP_HOME%`.
 
 ### SmartScreen
 
@@ -149,11 +135,11 @@ Unblock-File .\da.exe
 Example plugins need Python (`python3` on macOS and Linux; `python` or `py` on Windows).
 
 ```bash
-da plugin install /Applications/DAP.app/Contents/Resources/plugins/mail-fake --approve
-da plugin install /Applications/DAP.app/Contents/Resources/plugins/inbox-followups --approve
-da plugin install /Applications/DAP.app/Contents/Resources/plugins/hello-watch --approve
-da plugin install /Applications/DAP.app/Contents/Resources/plugins/workflow --approve
-da run
+./da plugin install ./plugins/mail-fake --approve
+./da plugin install ./plugins/inbox-followups --approve
+./da plugin install ./plugins/hello-watch --approve
+./da plugin install ./plugins/workflow --approve
+./da run
 ```
 
 The CLI installer does not copy example plugins. Use a checkout of this repo, the plugins inside a macOS app zip, or the `plugins/` directory from a Linux archive. Gmail and Outlook connect through Composio: save the API key on Connections, then press Connect. The steps are in [composio.md](composio.md). The demo mailbox (`mail-fake`) does not need a key. Nothing sends until you approve a card. Direct Microsoft Graph, and legacy direct Gmail, are documented in [inbox-followups.md](inbox-followups.md).

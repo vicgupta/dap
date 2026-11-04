@@ -9,7 +9,7 @@ Global flag, anywhere in the arguments:
 --data=<dir>
 ```
 
-If both are absent, the directory is `$DAP_HOME`, then the home directory plus `.dap` (`%USERPROFILE%\.dap` on Windows).
+If both are absent, the directory is `$DAP_HOME`, then `./.dap` in the folder where you run `da`. A relative `$DAP_HOME` or `--data` path is resolved from that folder. The path is made absolute once at startup. An older data directory in the home folder is not read or moved. `da` prints one line on stderr and keeps using `./.dap`.
 
 While `da serve` or `da run` is up, it writes `run.json` and holds `dap.lock`. Other commands call that process over HTTP. If `run.json` names a dead PID, the file is removed and the command opens the directory itself. Two processes cannot open the same directory: the second fails with "data directory is in use".
 
@@ -31,11 +31,11 @@ Creates the data directory (mode `0700`) and `config.json` if it is missing.
 
 ```bash
 da init
-da --data /tmp/dap-demo init
+da --data .dap-demo init
 ```
 
 ```json
-{ "ok": true, "data_dir": "/home/you/.dap", "addr": "127.0.0.1:7391" }
+{ "ok": true, "data_dir": "/path/to/this/folder/.dap", "addr": "127.0.0.1:7391" }
 ```
 
 `init` does not install plugins and does not start a server.
@@ -57,7 +57,7 @@ Stdout, once listening:
   "ok": true,
   "addr": "127.0.0.1:7391",
   "url": "http://127.0.0.1:7391/",
-  "data_dir": "/home/you/.dap"
+  "data_dir": "/path/to/this/folder/.dap"
 }
 ```
 
@@ -101,7 +101,7 @@ The body is `version`, `ok`, and `checks`. Each check has `name`, `ok`, `detail`
 | --- | --- |
 | `data_dir` | never (informational) |
 | `ledger` | the JSONL file cannot be read |
-| `secrets` | never (reports `file`, `keychain`, `credential-manager`, or `secret-service`) |
+| `secrets` | never (reports `file`) |
 | `dependencies` | install order could not be resolved |
 | `scheduler:<plugin>` | a scheduled plugin has no next run |
 | `plugin:<plugin>` | not running, health is not `ok`, permissions need approval, or start failed |
@@ -163,7 +163,7 @@ da plugin new note-watch --type watcher
 ```
 
 ```json
-{"ok": true, "path": "/home/you/note-watch", "name": "note-watch", "type": "watcher", "lang": "ts"}
+{"ok": true, "path": "/path/to/this/folder/note-watch", "name": "note-watch", "type": "watcher", "lang": "ts"}
 ```
 
 ## `da plugin validate`

@@ -1,11 +1,11 @@
-# Install the DAP CLI from the private GitHub repo into the current directory.
-# One-time setup: gh auth login
-# Then, in PowerShell:
-#   gh release download v0.1.0-alpha.4 --repo vicgupta/dap --pattern install.ps1
+# Install the DAP CLI into the current directory.
+# In PowerShell:
+#   Invoke-WebRequest -Uri https://raw.githubusercontent.com/vicgupta/dap/main/scripts/install.ps1 -OutFile .\install.ps1
 #   powershell -ExecutionPolicy Bypass -Scope Process -File .\install.ps1
 #   .\da.exe run
 # Does not change PATH, does not touch HKLM or Program Files, and does not request elevation.
 # Override the directory with -InstallDir or $env:DAP_INSTALL_DIR.
+# Downloads and da.exe stay in that folder. Data stays in .\.dap there.
 param(
   [string]$InstallDir = ""
 )
@@ -24,14 +24,6 @@ if ($InstallDir) {
   $dest = (Get-Location).Path
 }
 
-if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-  Write-Error "GitHub CLI (gh) is required. Install it, then run: gh auth login"
-}
-& gh auth status
-if ($LASTEXITCODE -ne 0) {
-  Write-Error "gh is not logged in. Run: gh auth login"
-}
-
 $arch = $env:PROCESSOR_ARCHITECTURE
 if ($env:PROCESSOR_ARCHITEW6432) { $arch = $env:PROCESSOR_ARCHITEW6432 }
 switch ($arch) {
@@ -41,13 +33,15 @@ switch ($arch) {
 }
 
 $zipName = "da-$Ver-windows-$goarch.zip"
-$workdir = Join-Path ([System.IO.Path]::GetTempPath()) ("dap-install-" + [guid]::NewGuid().ToString("n"))
-New-Item -ItemType Directory -Path $workdir | Out-Null
+$workdir = Join-Path $dest ".dap\tmp\install-$([guid]::NewGuid().ToString('n'))"
+New-Item -ItemType Directory -Path $workdir -Force | Out-Null
 
 try {
-  Write-Host "Downloading $Tag (windows $goarch) from $Repo"
-  & gh release download $Tag --repo $Repo --dir $workdir --pattern checksums.txt --pattern $zipName
-  if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $workdir $zipName))) {
+  $base = "https://github.com/$Repo/releases/download/$Tag"
+  Write-Host "Downloading $Tag (windows $goarch) from $base"
+  Invoke-WebRequest -Uri "$base/checksums.txt" -OutFile (Join-Path $workdir "checksums.txt") -UseBasicParsing
+  Invoke-WebRequest -Uri "$base/$zipName" -OutFile (Join-Path $workdir $zipName) -UseBasicParsing
+  if (-not (Test-Path (Join-Path $workdir $zipName))) {
     Write-Error "Could not download $zipName from $Tag."
   }
 
@@ -83,14 +77,6 @@ try {
     Unblock-File -LiteralPath $exe
   }
 
-  if ($env:DAP_HOME) {
-    $dataDir = $env:DAP_HOME
-  } elseif ($env:USERPROFILE) {
-    $dataDir = Join-Path $env:USERPROFILE ".dap"
-  } else {
-    $dataDir = Join-Path $env:HOME ".dap"
-  }
-
   Write-Host ""
   Write-Host "Installed da.exe at $exe"
   if ($dest -eq (Get-Location).Path) {
@@ -100,11 +86,12 @@ try {
     Write-Host "Run it with:"
     Write-Host "  & '$exe' run"
   }
-  Write-Host "Data directory: $dataDir"
+  Write-Host "Data stays in .\.dap in the folder where you run da.exe."
+  if ($env:DAP_HOME) {
+    Write-Host "DAP_HOME is set ($env:DAP_HOME). A relative value is resolved from that folder."
+  }
   Write-Host ""
   Write-Host "This installer does not change PATH and does not need administrator rights."
-  Write-Host "To run da.exe from any folder, add this directory to your user PATH:"
-  Write-Host "  [Environment]::SetEnvironmentVariable('Path', '$dest;' + [Environment]::GetEnvironmentVariable('Path','User'), 'User')"
   Write-Host ""
   Write-Host "da.exe is unsigned. On Windows, Unblock-File cleared the download mark on this copy."
   Write-Host "If Windows says 'Windows protected your PC', choose More info, then Run anyway. That is not an administrator prompt."

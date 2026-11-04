@@ -30,6 +30,11 @@ type Report struct {
 
 // Validate runs the schema, the manifest rules, and the protocol harness.
 func Validate(dir string) Report {
+	return ValidateIn(dir, "")
+}
+
+// ValidateIn is Validate with temp files and npm and pip caches inside dataDir.
+func ValidateIn(dir, dataDir string) Report {
 	rep := Report{Path: dir, OK: true}
 	add := func(c Check) {
 		if !c.OK {
@@ -58,7 +63,7 @@ func Validate(dir string) Report {
 	if !rep.OK {
 		return rep
 	}
-	if detail, err := prepareBuild(dir); err != nil {
+	if detail, err := prepareBuild(dir, dataDir); err != nil {
 		add(Check{Name: "build", OK: false, Detail: err.Error()})
 		return rep
 	} else if detail != "" {
@@ -80,7 +85,7 @@ func Validate(dir string) Report {
 		Name:    m.Name,
 		Dir:     dir,
 		Argv:    argv,
-		Env:     pluginhost.PluginEnv("DAP_PLUGIN=" + m.Name),
+		Env:     pluginhost.PluginEnvIn(dataDir, "DAP_PLUGIN="+m.Name),
 		DataDir: dir,
 	}); err != nil {
 		add(Check{Name: "start", OK: false, Detail: err.Error()})

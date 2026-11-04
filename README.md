@@ -1,3 +1,25 @@
+## Install
+
+The installer drops `da` into the folder you run it from. No admin rights and no PATH changes.
+
+macOS (Terminal):
+
+```bash
+curl -fsSL -o install.sh https://raw.githubusercontent.com/vicgupta/dap/main/scripts/install.sh
+sh install.sh
+./da run
+```
+
+Windows (PowerShell):
+
+```powershell
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/vicgupta/dap/main/scripts/install.ps1 -OutFile .\install.ps1
+powershell -ExecutionPolicy Bypass -Scope Process -File .\install.ps1
+.\da.exe run
+```
+
+The exe is unsigned. If SmartScreen appears, click More info, then Run anyway. No admin is needed.
+
 # DAP
 
 DAP (Dashboard Agent Platform) is a local-first app for running personal agents on your laptop. Your coding agent (Claude Code, Codex, or OpenCode) can do the thinking later. This repository is the core (the interface, the plugin contract, and the safety rails) plus inbox follow-ups and the mail connections those follow-ups use.
@@ -19,48 +41,13 @@ Core version: `0.1.0` (`internal/version`). Go `1.22` or newer.
 | [docs/plugin-authoring.md](docs/plugin-authoring.md) | How to add another Composio toolkit |
 | [docs/release.md](docs/release.md) | Release install, Gatekeeper, SmartScreen, checksums |
 
-## Install
-
-[v0.1.0-alpha.4](https://github.com/vicgupta/dap/releases/tag/v0.1.0-alpha.4) is a private GitHub pre-release of the `da` CLI: macOS (Apple Silicon, Intel, and universal) and Windows (amd64 and arm64). The repo stays private, so these links open only when you are logged into GitHub. There is no `DAP.app` in this release.
-
-One-time:
-
-```bash
-gh auth login
-```
-
-The installers copy `da` or `da.exe` into the current directory, check SHA256, and do not change `PATH`. They do not use sudo or an administrator prompt. `DAP_INSTALL_DIR` (or `--dir` / `-InstallDir`) picks another directory. Data stays in `~/.dap` on macOS and Linux, `%USERPROFILE%\.dap` on Windows, or `$DAP_HOME` when that is set.
-
-macOS, from the folder where you want `./da`:
-
-```bash
-gh release download v0.1.0-alpha.4 --repo vicgupta/dap --pattern install.sh && sh install.sh
-./da run
-```
-
-`install.sh` clears the quarantine flag on that `da` binary.
-
-Windows, from the folder where you want `.\da.exe`. A standard user can run this. `-Scope Process` applies only to this PowerShell process:
-
-```powershell
-gh release download v0.1.0-alpha.4 --repo vicgupta/dap --pattern install.ps1
-powershell -ExecutionPolicy Bypass -Scope Process -File .\install.ps1
-.\da.exe run
-```
-
-`install.ps1` runs `Unblock-File` on the copied exe. The exe is unsigned, so SmartScreen can still say **Windows protected your PC** the first time. Choose **More info**, then **Run anyway**. That dialog is not a request for administrator rights.
-
-Direct downloads are on the release: `da-0.1.0-alpha.4-darwin-arm64.tar.gz`, `da-0.1.0-alpha.4-darwin-amd64.tar.gz`, `da-0.1.0-alpha.4-darwin-universal.tar.gz`, `da-0.1.0-alpha.4-windows-amd64.zip`, `da-0.1.0-alpha.4-windows-arm64.zip`, and `checksums.txt`. Each Windows zip contains only `da.exe`. Gatekeeper and SmartScreen details: [docs/release.md](docs/release.md).
-
-v0.1.0-alpha.4 does not include Linux archives. A later tag's `install.sh` installs the Linux `da` the same way, into the current directory. The `.deb` packages are a separate path and do use `sudo`.
-
 ## Run
 
 Supported operating systems: macOS, Windows, and Linux. The binary is pure Go. TypeScript plugins need Node.js 20 or newer (Bun is optional). Python plugins, including workflow and the mail connectors, need Python 3 (`python3` on macOS and Linux; `python` or `py` on Windows).
 
 ```bash
 go build -o da ./cmd/da          # Windows: go build -o da.exe ./cmd/da
-./da init                        # ~/.dap, or %USERPROFILE%\.dap
+./da init                        # ./.dap in this folder
 ./da plugin install ./plugins/hello-watch --approve
 ./da plugin install ./plugins/workflow --approve
 ./da doctor
@@ -72,7 +59,7 @@ go build -o da ./cmd/da          # Windows: go build -o da.exe ./cmd/da
 
 `da serve` is the same server without opening a window. Open the `url` it prints. Default address is `127.0.0.1:7391`. The listener is forced onto loopback (`0.0.0.0` and `::` become `127.0.0.1`).
 
-Data directory, first match: `--data <dir>`, `--data=<dir>`, `$DAP_HOME`, then `~/.dap`.
+Data directory, first match: `--data <dir>`, `--data=<dir>`, `$DAP_HOME`, then `./.dap` in this folder. A relative `$DAP_HOME` or `--data` path is resolved from this folder. An older data directory in the home folder is left in place.
 
 ## Architecture
 
@@ -142,13 +129,9 @@ A schedule is one of `every` (Go duration, at least `5s`), a five-field cron exp
 
 `ledger.jsonl` is append-only. Rows are JSON lines. There is no update and no delete. Kinds the core writes include `plugin.install`, `plugin.remove`, `plugin.start`, `schedule.run`, `schedule.missed`, `card.proposed`, `card.approved`, `card.edited`, `card.rejected`, `card.snoozed`, `card.acted`, `card.blocked`, `card.failed`, `config.applied`, `guardrail.check`, `permission.denied`, `plugin.log`, `tile.write`, and `outcome`.
 
-Secrets use a `Keeper`. `DAP_SECRETS=file` forces `secrets.json` (mode `0600`). `DAP_SECRETS=os` requires the OS store. The default, `auto`, uses the OS store when a probe succeeds:
+Secrets use a `Keeper`. They are stored in `./.dap/secrets.json` (mode `0600`). DAP does not write the OS keychain, Credential Manager, or Secret Service.
 
-| OS | Store | Tool |
-| --- | --- | --- |
-| macOS | login keychain | `security` (`-w` puts the secret on the process argv for that call) |
-| Windows | Credential Manager | `CredWrite` / `CredRead` / `CredDelete` |
-| Linux | Secret Service | `secret-tool`, 3 second timeout |
+Claude Code, Codex, and OpenCode keep their own existing logins. DAP does not move those files. Processes DAP starts use `./.dap/tmp` for temporary files, and npm and pip caches under `./.dap/cache`.
 
 Plugin secrets are stored as service `dap.plugin.<name>` and the HTTP API allows them only when the manifest declares `secrets.read` or `secrets.write`.
 

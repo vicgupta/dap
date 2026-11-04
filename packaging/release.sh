@@ -56,25 +56,26 @@ awk -v tag="$tag" '
 ) | sort -k2 > "$out/checksums.txt"
 
 cat > "$root/dist/NOTES.md" << EOF
-DAP \`${tag}\` for macOS, Linux, and Windows. Private GitHub release.
+DAP \`${tag}\` for macOS, Linux, and Windows.
 macOS builds are ad-hoc signed and not notarized. Linux and Windows builds are unsigned.
-
-One-time: \`gh auth login\`
 
 macOS or Linux:
 
 \`\`\`bash
-gh release download ${tag} --repo vicgupta/dap --pattern install.sh && sh install.sh
+curl -fsSL -o install.sh https://raw.githubusercontent.com/vicgupta/dap/main/scripts/install.sh
+sh install.sh
+./da run
 \`\`\`
 
 Windows (PowerShell):
 
 \`\`\`powershell
-gh release download ${tag} --repo vicgupta/dap --pattern install.ps1
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/vicgupta/dap/main/scripts/install.ps1 -OutFile .\\install.ps1
 powershell -ExecutionPolicy Bypass -Scope Process -File .\\install.ps1
+.\\da.exe run
 \`\`\`
 
-The installers use that gh login, check SHA256, and copy \`da\` or \`da.exe\` into the current directory. They do not change PATH and do not need sudo or an administrator prompt. Run \`./da run\` or \`.\\da.exe run\`. Data stays in ~/.dap, %USERPROFILE%\\.dap, or \$DAP_HOME.
+The installers check SHA256 and copy \`da\` or \`da.exe\` into the current directory. They do not change PATH and do not need sudo or an administrator prompt. Data stays in ./.dap in that folder. A relative \$DAP_HOME is resolved from the folder.
 
 macOS Gatekeeper: right-click DAP.app > Open, or System Settings > Privacy & Security > Open Anyway, or \`xattr -dr com.apple.quarantine DAP.app\`.
 

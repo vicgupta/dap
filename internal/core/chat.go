@@ -17,6 +17,7 @@ import (
 	"github.com/vicgupta/dap/internal/ledger"
 	"github.com/vicgupta/dap/internal/manifest"
 	"github.com/vicgupta/dap/internal/model"
+	"github.com/vicgupta/dap/internal/rundir"
 	"github.com/vicgupta/dap/internal/store"
 )
 
@@ -41,7 +42,12 @@ func (a *App) openChat() (*chatSystem, error) {
 	if err != nil {
 		return nil, err
 	}
-	a.chatSys = &chatSystem{store: st, runner: &chat.Runner{}, status: &chat.Status{}}
+	dataDir := a.DataDir
+	env := func() []string {
+		_ = rundir.Ensure(dataDir)
+		return rundir.Apply(chat.BaseEnv(), dataDir)
+	}
+	a.chatSys = &chatSystem{store: st, runner: &chat.Runner{Env: env}, status: &chat.Status{Env: env}}
 	return a.chatSys, nil
 }
 

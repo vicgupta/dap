@@ -12,17 +12,13 @@ import (
 	"time"
 )
 
-// secretTool talks to Secret Service (GNOME Keyring, KWallet via the libsecret CLI).
+// secretTool used to talk to Secret Service. DAP no longer writes there.
 type secretTool struct {
 	bin string
 }
 
 func newPlatformKeeper() (Keeper, error) {
-	path, err := exec.LookPath("secret-tool")
-	if err != nil {
-		return nil, errors.New("secret-tool is not installed")
-	}
-	return &secretTool{bin: path}, nil
+	return nil, errors.New("secrets stay in the data directory")
 }
 
 func (s *secretTool) Backend() string { return "secret-service" }

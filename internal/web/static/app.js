@@ -894,7 +894,7 @@ function connectionsView() {
   return shell(`
     <header class="page-head"><div>
       <h1>Connections</h1>
-      <p>Sign in inside Google or Microsoft’s window. Composio holds those tokens. DAP stores the API key and each connection id in the keychain.</p>
+      <p>Sign in inside Google or Microsoft’s window. Composio holds those tokens. DAP stores the API key and each connection id in .dap/secrets.json in this folder.</p>
     </div></header>
     <article class="card plugin-block">
       <h2 style="margin:0">Composio</h2>

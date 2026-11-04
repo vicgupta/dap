@@ -39,7 +39,7 @@ A sidecar was rejected for the same architecture reasons:
 
 | Piece | Where | Role |
 | --- | --- | --- |
-| Toolkit registry | `internal/composio/registry.go` plus `~/.dap/composio/toolkits.json` | Id, Composio slug, label, kind, actions, and the tools a plugin may call |
+| Toolkit registry | `internal/composio/registry.go` plus `./.dap/composio/toolkits.json` | Id, Composio slug, label, kind, actions, and the tools a plugin may call |
 | Secrets | service `dap.composio` | Account `api_key` is the API key. Account `conn.<id>` is `{connection_id, auth_config_id, account, status}` |
 | Connect | `Service.Connect` | Hosted Google or Microsoft sign-in. Composio returns a URL. DAP opens it and polls until the connection is `ACTIVE` |
 | List | `GET /api/connections` | One row per toolkit, plus the demo mailbox. No key, no connection id, no provider token |
@@ -122,20 +122,12 @@ Disconnect removes that one connection. The key remains so the other toolkit sta
 this laptop                         Composio                         Google or Microsoft
 Connections UI                      holds the OAuth token            mailbox
 API key + connection id    HTTPS    refreshes it            HTTPS    threads, drafts, sends
-in the OS secret keeper             sees message contents            the account itself
+in ./.dap/secrets.json            sees message contents            the account itself
 ```
 
 Message contents, drafts, and sends pass through Composio's servers. That is the trade for not running DAP's own Google OAuth client. Composio's pricing page describes the company as SOC 2 Type II. Review their trust center before connecting a mailbox you would not send through a third party.
 
-DAP does not read or reuse tokens stored by other apps. The key and connection ids are not written to `mail/public.json`, the ledger, plugin logs, or the status JSON the UI and plugins receive. The secret keeper is the OS store when it answers:
-
-| OS | Store |
-| --- | --- |
-| macOS | Login keychain via `security` |
-| Windows | Credential Manager |
-| Linux | Secret Service via `secret-tool` |
-
-If the OS store does not answer, DAP uses `secrets.json` mode `0600`. `DAP_SECRETS=file` forces that file. `DAP_SECRETS=os` refuses to start without the OS store. On macOS the `security -w` flag puts the secret on that short-lived process's argv. That is the existing keeper, documented in [runtime.md](runtime.md).
+DAP does not read or reuse tokens stored by other apps. The key and connection ids are not written to `mail/public.json`, the ledger, plugin logs, or the status JSON the UI and plugins receive. They are stored in `./.dap/secrets.json` (mode `0600`). DAP does not write the OS keychain, Credential Manager, or Secret Service. See [runtime.md](runtime.md).
 
 ## Cost
 
@@ -151,4 +143,4 @@ A tool execution counts once. Trigger events are a separate meter (50,000 / mont
 
 ## Releases
 
-This change does not add a dependency, a sidecar, or an installer change. `go build` still produces one binary. Binary size does not grow by a bundled SDK. There is nothing extra to sign per OS, and `install.sh` is untouched. Private GitHub releases stay Mac zips, tarballs, and `install.sh`, with no Homebrew and no public hosting. Do not put the API key in a release artifact or in the repo.
+This change does not add a dependency, a sidecar, or an installer change. `go build` still produces one binary. Binary size does not grow by a bundled SDK. There is nothing extra to sign per OS. Do not put the API key in a release artifact or in the repo.

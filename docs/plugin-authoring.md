@@ -179,7 +179,7 @@ One JSON object per line. The core writes a request and waits for the matching `
 {"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"unknown method nope"}}
 ```
 
-The process environment keeps `PATH`, `HOME`, `USER`, `LOGNAME`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TZ`, `SYSTEMROOT`, `WINDIR`, `TEMP`, `TMP`, `LOCALAPPDATA`, and `USERPROFILE` when set, plus `PYTHONUNBUFFERED=1`, `PYTHONIOENCODING=utf-8`, `DAP_PLUGIN`, `DAP_API`, and `DAP_TOKEN`. Other parent variables are not passed in. `DAP_TOKEN` is the plugin bearer token. It changes every start. It is not an OAuth token.
+The process environment keeps `PATH`, `HOME`, `USER`, `LOGNAME`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TZ`, `SYSTEMROOT`, and `WINDIR` when set, plus `PYTHONUNBUFFERED=1`, `PYTHONIOENCODING=utf-8`, `DAP_PLUGIN`, `DAP_API`, and `DAP_TOKEN`. `TMPDIR`, `TEMP`, and `TMP` point at `./.dap/tmp`. `npm_config_cache` and `PIP_CACHE_DIR` point at `./.dap/cache`. Other parent variables are not passed in. `DAP_TOKEN` is the plugin bearer token. It changes every start. It is not an OAuth token.
 
 ### initialize
 
@@ -309,7 +309,7 @@ Theme and density: link `/theme-boot.js`, `/layout-boot.js`, `/theme.css`, and `
 
 | Path | Role |
 | --- | --- |
-| `~/.dap` or `$DAP_HOME` or `--data` | The DAP data directory, mode `0700` |
+| `./.dap` or `$DAP_HOME` or `--data` | The DAP data directory, mode `0700`, inside the folder where you run `da` |
 | `plugin-data/<name>/` | `data_dir` in `initialize`. Yours. |
 | `drafts/<name>/` | Where **Create plugin** scaffolds a new plugin |
 | `ledger.jsonl` | Append-only. You can add rows with `POST /log`. You cannot edit or delete rows. |
@@ -455,7 +455,7 @@ Do not change `internal/composio/client.go`. It already speaks Composio's REST A
 
 ### Configuration
 
-Create `composio/toolkits.json` in the data directory (`~/.dap`, or `$DAP_HOME`). Mode `0600`. The next Connections refresh loads it. A restart is not required.
+Create `composio/toolkits.json` in the data directory (`./.dap`, or `$DAP_HOME`). Mode `0600`. The next Connections refresh loads it. A restart is not required.
 
 ```json
 {
