@@ -1,0 +1,13 @@
+id: competitor-research
+title: Competitor research
+blurb: Watches the public pages you list and cards what changed.
+mode: install
+permissions:
+  - web.fetch
+connections: []
+settings:
+  - key: urls
+    type: list
+    label: Pages to watch
+    description: One public https URL per line
+    default: []

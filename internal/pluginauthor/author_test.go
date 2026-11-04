@@ -37,7 +37,7 @@ func TestScaffoldRejectsBadName(t *testing.T) {
 	}
 }
 
-func TestScaffoldMailPermissionsAndMarker(t *testing.T) {
+func TestScaffoldKeepsStarterMarker(t *testing.T) {
 	dir := t.TempDir()
 	path, err := Scaffold(Options{
 		Name:        "inbox-triage",
@@ -54,11 +54,8 @@ func TestScaffoldMailPermissionsAndMarker(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(raw)
-	if !strings.Contains(text, "name: mail.read") || !strings.Contains(text, "name: mail.draft") {
-		t.Fatalf("%s", text)
-	}
-	if strings.Contains(text, "inbox.triage") {
-		t.Fatalf("demo permission should not sit beside mail: %s", text)
+	if strings.Contains(text, "name: mail.read") || strings.Contains(text, "name: mail.draft") {
+		t.Fatalf("scaffold must not guess mail permissions from the description:\n%s", text)
 	}
 	if !MarkerPresent(path) {
 		t.Fatal("starter marker missing")
@@ -84,18 +81,6 @@ func TestScaffoldMailPermissionsAndMarker(t *testing.T) {
 	}
 	if strings.Contains(string(raw), "mail.read") {
 		t.Fatalf("unrelated plugin declared mail: %s", raw)
-	}
-}
-
-func TestSuggestType(t *testing.T) {
-	if SuggestType("run the steps in order") != "workflow" {
-		t.Fatal(SuggestType("run the steps in order"))
-	}
-	if SuggestType("a capability for other plugins") != "capability" {
-		t.Fatal()
-	}
-	if SuggestType("tell me when a file changes") != "watcher" {
-		t.Fatal()
 	}
 }
 

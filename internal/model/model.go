@@ -24,6 +24,7 @@ const (
 
 	ActorPlugin   = "plugin"
 	ActorExternal = "external"
+	ActorUser     = "user"
 
 	StatusPending  = "pending"
 	StatusActing   = "acting"

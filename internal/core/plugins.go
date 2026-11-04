@@ -37,6 +37,11 @@ type PermView struct {
 
 // Install validates a plugin directory. Without approve it only previews permissions.
 func (a *App) Install(dir string, approve bool) (InstallResult, error) {
+	return a.install(dir, approve, nil)
+}
+
+// install is Install with an optional config map. A nil map uses manifest defaults.
+func (a *App) install(dir string, approve bool, given map[string]any) (InstallResult, error) {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return InstallResult{}, err
@@ -69,7 +74,7 @@ func (a *App) Install(dir string, approve bool) (InstallResult, error) {
 	if _, err := manifest.Order(ms); err != nil {
 		return res, err
 	}
-	cfg, err := manifest.ResolveConfig(m, nil)
+	cfg, err := manifest.ResolveConfig(m, given)
 	if err != nil {
 		return res, err
 	}

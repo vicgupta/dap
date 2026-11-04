@@ -1,0 +1,36 @@
+name: scheduled-checklist
+version: 0.1.0
+min_dap_version: 0.1.0
+type: workflow
+interface: dap.plugin.v1
+description: Runs an ordered checklist. A step that sends waits for approval.
+runtime: node
+entrypoint: dist/index.js
+permissions:
+  - name: workflow.run
+    mode: allowed
+    description: Run a step that does not send, spend, or delete
+provides:
+  - step-runs
+config:
+  - key: steps
+    type: list
+    description: Ordered steps. A step that sends, spends, or deletes waits in the inbox.
+    default:
+      - id: gather
+        title: Gather the notes
+        detail: Collect yesterday's notes into one list.
+        effects: []
+      - id: share
+        title: Share the update
+        detail: This sends, so it waits for approval.
+        effects:
+          - sends
+      - id: file
+        title: File the checklist
+        detail: Keep a local copy of what ran.
+        effects: []
+schedule:
+  every: 1h
+tile:
+  size: medium

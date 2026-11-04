@@ -57,13 +57,49 @@ test("connections page", async ({ page }) => {
 });
 
 test("create plugin page", async ({ page }) => {
-  await page.goto("/#/create");
-  await expect(page.getByRole("heading", { name: "Create plugin" })).toBeVisible();
+  await openCreateForm(page);
   await expect(page.locator('textarea[name="description"]')).toBeVisible();
-  await expect(page.getByRole("button", { name: /Watcher/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Capability/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Workflow/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Create draft and run agent/ })).toBeEnabled();
+  await expect(page.getByRole("checkbox", { name: /Install automatically when created/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create", exact: true })).toBeEnabled();
+  for (const title of ["Inbox triage", "Follow-up nudger", "Daily digest", "Reply drafter", "Scheduled checklist", "Competitor research"]) {
+    await expect(page.getByRole("button", { name: new RegExp(title) })).toBeVisible();
+  }
+  await expect(page.getByRole("button", { name: /Watcher/ })).toHaveCount(0);
+});
+
+test("create job survives reload and auto-installs", async ({ page }, testInfo) => {
+  await openCreateForm(page);
+  if (testInfo.project.name === "chromium") {
+    fs.mkdirSync(shotRoot, { recursive: true });
+    await page.screenshot({ path: path.join(shotRoot, "create_templates.png") });
+  }
+  await page.getByRole("button", { name: /Inbox triage/ }).click();
+  await expect(page.getByText("No coding agent runs")).toBeVisible();
+  await page.getByRole("checkbox", { name: /Install automatically when created/ }).check();
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(page.locator(".create-status")).toBeVisible();
+  if (testInfo.project.name === "chromium") {
+    await page.screenshot({ path: path.join(shotRoot, "create_running.png") });
+  }
+  await expect(page.locator(".create-status")).toHaveText("Installed", { timeout: 30_000 });
+  await expect(page.getByText("inbox-triage is installed")).toBeVisible();
+  if (testInfo.project.name === "chromium") {
+    await page.screenshot({ path: path.join(shotRoot, "create_installed.png") });
+  }
+  await page.reload();
+  await expect(page.locator(".create-status")).toHaveText("Installed");
+
+  await openCreateForm(page);
+  await page.getByRole("button", { name: /Describe your own/ }).click();
+  await page.locator('textarea[name="description"]').fill("Watch a folder of notes and never send mail.");
+  await page.getByRole("checkbox", { name: /Install automatically when created/ }).check();
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Retry" })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(/Nothing was installed|starter/)).toBeVisible();
+  const failed = await jobNow(page);
+  expect(failed.status).toBe("failed");
+  expect(failed.id).toBeTruthy();
+  expect(failed.card || null).toBeFalsy();
 });
 
 test("chat streams a fake provider reply", async ({ page }) => {
@@ -101,6 +137,25 @@ test("home and chat screenshots", async ({ browser, browserName, baseURL }) => {
     await chat.context.close();
   }
 });
+
+async function openCreateForm(page: Page) {
+  await page.goto("/#/create");
+  await expect(page.getByRole("heading", { name: "Create plugin" })).toBeVisible();
+  const startOver = page.getByRole("button", { name: "Start over" });
+  const triage = page.getByRole("button", { name: /Inbox triage/ });
+  await expect(startOver.or(triage)).toBeVisible();
+  if (await startOver.isVisible()) await startOver.click();
+  await expect(triage).toBeVisible();
+}
+
+async function jobNow(page: Page) {
+  return page.evaluate(async () => {
+    const token = document.querySelector('meta[name="dap-token"]')?.getAttribute("content") || "";
+    const res = await fetch("/api/create/current", { headers: { Authorization: "Bearer " + token } });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  });
+}
 
 async function ask(page: Page, text: string) {
   const input = page.locator("#chat-input");

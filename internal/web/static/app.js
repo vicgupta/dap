@@ -24,7 +24,7 @@ const state = {
   connNote: {},
   openDetails: {},
   data: {},
-  create: { description: "", name: "", type: "", lang: "ts", ui: false, agent: "", phase: "form", log: "", report: null, path: "", edit: "", message: "", card: null },
+  create: blankCreate(),
   quitConfirm: null,
   quitPending: false,
   quitting: false,
@@ -754,136 +754,202 @@ function pluginsView() {
   `);
 }
 
-function runtimeHint(lang) {
-  const rows = (state.data.home && state.data.home.runtimes) || [];
-  const node = rows.find((r) => r.name === "node");
-  const bun = rows.find((r) => r.name === "bun");
-  if (lang === "python") return "Python plugins run with python3. The other shipped plugins that are still Python keep working.";
-  const nodeLine = node && node.ok ? "Node " + (node.version || "") + " is available." : "Node.js 20 or newer is not available. Install it from https://nodejs.org.";
-  const bunLine = bun && bun.found ? " Bun can run TypeScript directly when a plugin sets runtime: bun." : "";
-  return nodeLine + bunLine;
+function blankCreate() {
+  return {
+    description: "", name: "", agent: "", autoInstall: false, template: "", settings: {},
+    templates: [], phase: "form", id: "", status: "", step: "", log: "", card: null,
+    failedChecks: [], error: "", edit: "", hydrated: false,
+  };
 }
 
-function suggestType(text) {
-  const d = (text || "").toLowerCase();
-  if (d.includes("workflow") || d.includes("step")) return "workflow";
-  if (d.includes("capability") || d.includes("other plugin")) return "capability";
-  return "watcher";
+const agentLabel = { claude: "Claude Code", codex: "Codex", opencode: "OpenCode" };
+
+function selectedTemplate() {
+  const id = state.create.template;
+  return (state.create.templates || []).find((t) => t.id === id) || null;
 }
 
 function createView() {
   const c = state.create;
   const edit = hashQuery().get("edit") || c.edit || "";
+  if (c.phase === "run") return createProgress(edit);
   const agents = (state.data.home && state.data.home.agents) || [];
   const found = agents.filter((a) => a.found);
-  const suggested = suggestType(c.description);
-  const type = c.type || suggested;
-  if (c.phase === "run" || c.phase === "done") {
-    const checks = (c.report && c.report.checks || []).map((row) =>
-      `<li class="${row.ok ? "pass" : "fail"}"><strong>${esc(row.name)}</strong> ${esc(row.detail || "")}</li>`).join("");
-    const passed = c.status === "passed";
-    const needsFix = c.status === "needs a fix";
-    const running = c.status === "running";
-    const checking = c.status === "checking";
-    const failed = c.phase === "done" && !passed && !needsFix && !checking;
-    const name = c.name || edit || "Plugin";
-    let headline = "Writing " + name;
-    let lead = "Your coding agent is working in the draft folder. The log updates as it goes. Nothing is installed until you approve a change card.";
-    if (checking) {
-      headline = "Checking " + name;
-      lead = "Validation is running. Nothing is installed yet.";
-    } else if (passed) {
-      headline = "Ready to review";
-      lead = name + " passed validation. A change card is in the inbox. The plugin is not installed until you approve it.";
-    } else if (needsFix) {
-      headline = "Needs a fix";
-      lead = c.message || "Validation did not pass, so DAP did not propose an install.";
-    } else if (c.status === "cancelled") {
-      headline = "Cancelled";
-      lead = c.message || "Cancelled. Nothing was proposed.";
-    } else if (failed) {
-      headline = "Nothing was proposed";
-      lead = c.message || "The agent did not finish a plugin, so DAP did not propose an install.";
-    }
-    const bannerClass = passed ? "banner ok" : "banner";
-    const banner = (passed || needsFix || failed)
-      ? `<div class="${bannerClass}" role="${passed ? "status" : "alert"}">${esc(lead)}</div>`
-      : `<p class="create-lead">${esc(lead)}</p>`;
-    const tailCount = (running || checking) ? 200 : 40;
-    const full = c.log || "";
-    const tail = window.DAPCreate ? window.DAPCreate.logTail(full, tailCount) : full;
-    const rawLines = String(full).split("\n");
-    if (rawLines.length && rawLines[rawLines.length - 1] === "") rawLines.pop();
-    const trimmed = rawLines.length > tailCount;
-    const cardBlock = passed && c.card
-      ? `<h2 class="section-title">Change card</h2><p class="create-lead">${esc(c.card.title || "")}</p><pre class="create-log">${esc(c.card.body || "")}</pre>`
-      : "";
-    return shell(`
-      <header class="page-head"><div><h1>${edit ? "Edit with agent" : "Create plugin"}</h1><p>${esc(name)}</p></div></header>
-      <section class="card plugin-block">
-        <p class="create-status">${esc(headline)}</p>
-        ${banner}
-        <p class="create-log-label">Agent log</p>
-        ${trimmed ? `<p class="sub">Showing the last part of the agent log.</p>` : ""}
-        <pre class="create-log" aria-live="polite">${esc(tail || (running ? "Starting…" : "No output."))}</pre>
-        <div class="actions" style="margin-top:12px">
-          ${running ? `<button class="ghost" data-act="create-cancel">Cancel</button>` : ""}
-          ${failed ? `<button class="primary" data-act="create-retry">Retry</button>` : ""}
-          ${needsFix ? `<button class="primary" data-act="create-fix">Ask the agent to fix</button>` : ""}
-          ${passed ? `<a class="ghost" href="#/inbox">Review the change card</a>` : ""}
-          <button class="quiet" data-act="create-reset">Start over</button>
-        </div>
-        ${checks ? `<h2 class="section-title">Validation</h2><ul class="checks">${checks}</ul>` : ""}
-        ${cardBlock}
-      </section>
-    `);
-  }
-  const typeBtn = (id, label, hint) => `<button type="button" class="ghost type-choice ${type === id ? "selected" : ""}" data-act="create-type" data-type="${id}" aria-pressed="${type === id}">${label}<span class="sub">${hint}</span></button>`;
+  const tmpl = selectedTemplate();
+  const installMode = tmpl && tmpl.mode === "install";
+  const needsAgent = !installMode;
   const agentBtns = agents.map((a) => {
     const disabled = a.found ? "" : "disabled";
     const on = c.agent === a.name ? "selected" : "";
-    return `<button type="button" class="ghost ${on}" data-act="create-agent" data-agent="${esc(a.name)}" ${disabled} aria-pressed="${c.agent === a.name}">${esc(a.name)}${a.found ? "" : " · not installed"}</button>`;
+    const label = agentLabel[a.name] || a.name;
+    return `<button type="button" class="ghost ${on}" data-act="create-agent" data-agent="${esc(a.name)}" ${disabled} aria-pressed="${c.agent === a.name}">${esc(label)}${a.found ? "" : " · not installed"}</button>`;
   }).join("");
-  const hints = agents.filter((a) => !a.found).map((a) => `<li><strong>${esc(a.name)}</strong> is not on PATH. Install it and log in with your own account. DAP does not take an API key. ${esc(a.name === "claude" ? "Claude Code: https://docs.anthropic.com/en/docs/claude-code" : a.name === "codex" ? "Codex CLI, then codex login." : "OpenCode, then log in.")}</li>`).join("");
+  const hints = agents.filter((a) => !a.found).map((a) => `<li><strong>${esc(agentLabel[a.name] || a.name)}</strong> is not on PATH. Install it and log in with your own account. DAP does not take an API key.</li>`).join("");
+  const grid = edit ? "" : templateGrid(tmpl);
+  const settings = installMode ? settingsFields(tmpl) : "";
+  const canSubmit = installMode || found.length > 0;
   return shell(`
     <header class="page-head">
       <div>
         <h1>${edit ? "Edit " + esc(edit) : "Create plugin"}</h1>
-        <p>${edit ? "Describe the change. Approval still happens in the inbox." : "Describe what you want. Your coding agent writes the plugin. You approve before it is installed."}</p>
+        <p>${edit ? "Describe the change. It still waits for your approval." : "Pick a starting point or describe your own. You see the result before anything is installed."}</p>
       </div>
     </header>
+    ${grid}
     <form class="card plugin-block stack" data-act="create-start">
-      <label class="field">What should it do?
+      ${installMode ? "" : `<label class="field">What should it do?
         <textarea name="description" required placeholder="Watch a folder and ask me before it deletes anything.">${esc(c.description)}</textarea>
-      </label>
-      ${edit ? "" : `<label class="field">Name
+      </label>`}
+      ${edit || installMode ? "" : `<label class="field">Name <span class="sub">optional</span>
         <input name="name" type="text" placeholder="folder-watch" value="${esc(c.name)}" />
       </label>`}
-      <div>
-        <p class="sub">Type${type === suggested ? " · suggested" : ""}</p>
-        <div class="type-row">
-          ${typeBtn("watcher", "Watcher", "Notices something and proposes cards")}
-          ${typeBtn("capability", "Capability", "A tool other plugins can use")}
-          ${typeBtn("workflow", "Workflow", "Ordered steps, some may wait")}
-        </div>
-      </div>
-      ${edit ? "" : `<label class="field inline"><input name="ui" type="checkbox" ${c.ui ? "checked" : ""} /> Include a small web page</label>
-      <label class="field">Language
-        <select name="lang">
-          <option value="ts" ${c.lang === "ts" ? "selected" : ""}>TypeScript</option>
-          <option value="python" ${c.lang === "python" ? "selected" : ""}>Python</option>
-        </select>
-      </label>
-      <p class="sub">${runtimeHint(c.lang)}</p>`}
-      <div>
+      ${settings}
+      ${needsAgent ? `<div>
         <p class="sub">Coding agent</p>
         <div class="type-row">${agentBtns || `<p class="sub">No agent list yet.</p>`}</div>
       </div>
       ${found.length ? "" : `<div class="banner">None of Claude Code, Codex, or OpenCode is on PATH. Install one and log in, then come back. DAP will not call a model for you.</div>`}
-      ${hints ? `<ul class="sub">${hints}</ul>` : ""}
-      <button class="primary" type="submit" ${found.length ? "" : "disabled"}> ${edit ? "Ask the agent to edit" : "Create draft and run agent"}</button>
+      ${hints ? `<ul class="sub">${hints}</ul>` : ""}` : `<p class="sub">This template is ready to install. No coding agent runs.</p>`}
+      <label class="field inline"><input name="autoInstall" type="checkbox" ${c.autoInstall ? "checked" : ""} ${edit ? "disabled" : ""} /> Install automatically when created</label>
+      <p class="sub">${edit ? "Edits always wait for approval." : "When every check passes, DAP approves the install. If a check fails, nothing is installed."}</p>
+      <button class="primary" type="submit" ${canSubmit ? "" : "disabled"}>${edit ? "Ask the agent to edit" : "Create"}</button>
     </form>
   `);
+}
+
+function templateGrid(selected) {
+  const cards = (state.create.templates || []).map((t) => {
+    const on = selected && selected.id === t.id;
+    const mode = t.mode === "install" ? "Install" : "Customize";
+    return `<button type="button" class="template-card${on ? " selected" : ""}" data-act="create-template" data-template="${esc(t.id)}" aria-pressed="${on ? "true" : "false"}">
+      <span class="template-mode">${mode}</span>
+      <strong>${esc(t.title)}</strong>
+      <span class="sub">${esc(t.blurb)}</span>
+    </button>`;
+  }).join("");
+  const blankOn = !selected;
+  return `<div class="template-grid" role="list">
+    <button type="button" class="template-card${blankOn ? " selected" : ""}" data-act="create-template" data-template="" aria-pressed="${blankOn ? "true" : "false"}">
+      <span class="template-mode">Blank</span>
+      <strong>Describe your own</strong>
+      <span class="sub">TypeScript starter. Your agent sets the type.</span>
+    </button>
+    ${cards}
+  </div>`;
+}
+
+function settingsFields(tmpl) {
+  const fields = tmpl.settings || [];
+  if (!fields.length) return "";
+  return fields.map((f) => {
+    const value = state.create.settings[f.key] != null ? state.create.settings[f.key] : f.default;
+    if (f.type === "bool") {
+      return `<label class="field inline"><input data-setting="${esc(f.key)}" data-type="bool" type="checkbox" ${value ? "checked" : ""} /> ${esc(f.label || f.key)}</label>`;
+    }
+    if (f.type === "list") {
+      const text = Array.isArray(value) ? value.join("\n") : "";
+      return `<label class="field">${esc(f.label || f.key)}
+        <textarea data-setting="${esc(f.key)}" data-type="list" placeholder="One per line">${esc(text)}</textarea>
+        ${f.description ? `<span class="sub">${esc(f.description)}</span>` : ""}
+      </label>`;
+    }
+    const inputType = f.type === "number" ? "number" : "text";
+    const shown = value == null ? "" : String(value);
+    return `<label class="field">${esc(f.label || f.key)}
+      <input data-setting="${esc(f.key)}" data-type="${esc(f.type || "string")}" type="${inputType}" value="${esc(shown)}" />
+      ${f.description ? `<span class="sub">${esc(f.description)}</span>` : ""}
+    </label>`;
+  }).join("");
+}
+
+function createProgress(edit) {
+  const c = state.create;
+  const name = (c.card && c.card.plugin) || c.name || edit || "Plugin";
+  const running = c.status === "running";
+  const ready = c.status === "ready";
+  const installed = c.status === "installed";
+  const failed = c.status === "failed";
+  const cancelled = c.status === "cancelled";
+  const steps = [
+    ["scaffold", "Draft"],
+    ["agent", installModeProgress(c) ? null : "Agent"],
+    ["check", "Check"],
+    ["install", c.autoInstall && !edit ? "Install" : "Review"],
+  ].filter((row) => row[1]);
+  const order = ["scaffold", "agent", "check", "propose", "install", "done"];
+  const at = order.indexOf(c.step);
+  const rail = steps.map(([id]) => {
+    const idx = order.indexOf(id === "install" ? (c.step === "propose" ? "propose" : "install") : id);
+    let cls = "";
+    if (c.step === "done") cls = failed || cancelled ? "" : "done";
+    else if (id === "install" && (c.step === "propose" || c.step === "install")) cls = "on";
+    else if (idx >= 0 && idx < at) cls = "done";
+    else if (idx === at) cls = "on";
+    const label = steps.find((row) => row[0] === id)[1];
+    return `<li class="${cls}">${esc(label)}</li>`;
+  }).join("");
+  let headline = "Preparing the draft";
+  let lead = "DAP is setting up the folder. Nothing is installed yet.";
+  if (c.step === "agent") {
+    headline = "Writing " + name;
+    lead = "Your coding agent is working in the draft. Nothing is installed until the checks pass.";
+  } else if (c.step === "check") {
+    headline = "Checking " + name;
+    lead = "Validation runs once. Nothing is installed yet.";
+  } else if (c.step === "install") {
+    headline = "Installing " + name;
+    lead = "Every check passed. DAP is installing it now.";
+  } else if (installed) {
+    headline = "Installed";
+    lead = name + " is installed. The change card was approved when you created it.";
+  } else if (ready) {
+    headline = "Ready to review";
+    lead = name + " passed the checks. Approve to install it, or deny to leave the draft.";
+  } else if (cancelled) {
+    headline = "Cancelled";
+    lead = c.error || "Cancelled. Nothing was proposed.";
+  } else if (failed) {
+    headline = c.failedChecks && c.failedChecks.length ? "Needs another pass" : "Nothing was installed";
+    lead = c.error || "DAP did not install the plugin.";
+  }
+  const tone = installed || ready ? "banner ok" : "banner";
+  const banner = (installed || ready || failed || cancelled)
+    ? `<div class="${tone}" role="${installed || ready ? "status" : "alert"}">${esc(lead)}</div>`
+    : `<p class="create-lead">${esc(lead)}</p>`;
+  const checks = (c.failedChecks || []).map((row) =>
+    `<li class="fail"><strong>${esc(row.name)}</strong> ${esc(row.detail || "")}</li>`).join("");
+  const card = c.card;
+  const pending = card && (!card.status || card.status === "pending" || card.status === "snoozed");
+  const actions = ready && pending
+    ? `<button class="primary" data-act="create-approve" data-id="${esc(card.id)}">Approve and install</button>
+       <button class="ghost" data-act="create-deny" data-id="${esc(card.id)}">Don't install</button>`
+    : "";
+  const cardBlock = card
+    ? `<h2 class="section-title">Change card</h2><p class="create-lead">${esc(card.title || "")}</p><pre class="create-log">${esc(card.body || "")}</pre>`
+    : "";
+  return shell(`
+    <header class="page-head"><div><h1>${edit ? "Edit with agent" : "Create plugin"}</h1><p>${esc(name)}</p></div></header>
+    <section class="card plugin-block">
+      <ol class="create-steps">${rail}</ol>
+      <p class="create-status">${esc(headline)}</p>
+      ${banner}
+      <p class="create-log-label">${c.mode === "install" && c.step !== "agent" ? "Progress" : "Agent log"}</p>
+      <pre class="create-log" aria-live="polite">${esc(c.log || (running ? "Starting…" : "No output."))}</pre>
+      <div class="actions" style="margin-top:12px">
+        ${running ? `<button class="ghost" data-act="create-cancel">Cancel</button>` : ""}
+        ${failed ? `<button class="primary" data-act="create-retry">Retry</button>` : ""}
+        ${actions}
+        ${installed ? `<a class="ghost" href="#/plugins">View plugins</a>` : ""}
+        <button class="quiet" data-act="create-reset">Start over</button>
+      </div>
+      ${checks ? `<h2 class="section-title">What failed</h2><ul class="checks">${checks}</ul>` : ""}
+      ${cardBlock}
+    </section>
+  `);
+}
+
+function installModeProgress(c) {
+  return c.mode === "install" && c.step !== "agent";
 }
 
 function connectionsView() {
@@ -1425,6 +1491,7 @@ async function refresh() {
     if (state.route === "activity") state.data.activity = await api("/api/activity");
     if (state.route === "guardrails") state.data.guard = await api("/api/guardrails");
     if (state.route === "plugins" || state.route === "create") state.data.plugins = await api("/api/plugins");
+    if (state.route === "create") await hydrateCreate();
     if (state.route === "connections") state.data.connections = await api("/api/connections");
     if (state.route !== "home") {
       state.data.home = await api("/api/home");
@@ -1480,8 +1547,17 @@ document.addEventListener("click", (ev) => {
   }
   const actName = el.dataset.act;
   const id = el.dataset.id;
-  if (actName === "create-type") {
-    state.create.type = el.dataset.type;
+  if (actName === "create-template") {
+    const id = el.dataset.template || "";
+    state.create.template = id;
+    const tmpl = (state.create.templates || []).find((t) => t.id === id);
+    state.create.settings = {};
+    if (tmpl) {
+      (tmpl.settings || []).forEach((f) => {
+        if (f.default != null) state.create.settings[f.key] = f.default;
+      });
+      if (tmpl.mode === "customize" && tmpl.description) state.create.description = tmpl.description.trim();
+    }
     render();
     return;
   }
@@ -1491,31 +1567,58 @@ document.addEventListener("click", (ev) => {
     return;
   }
   if (actName === "edit-agent") {
-    state.create = { description: "", name: el.dataset.name, type: "", lang: "ts", ui: false, agent: "", phase: "form", log: "", report: null, path: "", edit: el.dataset.name, message: "", card: null };
+    const kept = state.create.templates;
+    const hydrated = state.create.hydrated;
+    state.create = blankCreate();
+    state.create.templates = kept;
+    state.create.hydrated = hydrated;
+    state.create.edit = el.dataset.name;
+    state.create.name = el.dataset.name;
     location.hash = "#/create?edit=" + encodeURIComponent(el.dataset.name);
     state.route = "create";
     render();
     return;
   }
   if (actName === "create-cancel") {
-    if (state.create.runId) api("/api/create/run/" + state.create.runId + "/cancel", { method: "POST", body: {} }).catch(() => {});
+    if (state.create.id) api("/api/create/" + state.create.id + "/cancel", { method: "POST", body: {} }).catch(() => {});
     state.create.status = "cancelled";
+    state.create.step = "done";
+    state.create.error = "Cancelled. Nothing was proposed.";
     render();
     return;
   }
   if (actName === "create-reset") {
-    state.create = { description: "", name: "", type: "", lang: "ts", ui: false, agent: "", phase: "form", log: "", report: null, path: "", edit: "", message: "", card: null };
+    const id = state.create.id;
+    const kept = state.create.templates;
+    if (id) api("/api/create/" + id + "/dismiss", { method: "POST", body: {} }).catch(() => {});
+    state.create = blankCreate();
+    state.create.templates = kept;
+    state.create.hydrated = true;
     location.hash = "#/create";
     render();
     return;
   }
   if (actName === "create-retry") {
-    startAgent(state.create.description, "");
+    retryCreate();
     return;
   }
-  if (actName === "create-fix") {
-    const failed = (state.create.report.checks || []).filter((row) => !row.ok).map((row) => row.name + ": " + (row.detail || "")).join("\n");
-    startAgent(state.create.description, failed);
+  if (actName === "create-approve") {
+    act("approve", async () => {
+      await api("/api/inbox/" + id + "/approve", { method: "POST", body: {} });
+      state.create.status = "installed";
+      state.create.step = "done";
+      state.create.error = "";
+    });
+    return;
+  }
+  if (actName === "create-deny") {
+    act("deny", async () => {
+      await api("/api/inbox/" + id + "/reject", { method: "POST", body: { reason: "Denied from the create page" } });
+      state.create.status = "failed";
+      state.create.step = "done";
+      state.create.error = "Not installed. The draft is still there.";
+      state.create.card = null;
+    });
     return;
   }
   if (actName === "theme-toggle") {
@@ -1741,35 +1844,16 @@ document.addEventListener("submit", (ev) => {
     if (box) state.chat.draft = box.value;
     sendChat();
   } else if (kind === "create-start") {
-    state.create.description = form.description.value.trim();
+    if (form.description) state.create.description = form.description.value.trim();
     if (form.name) state.create.name = form.name.value.trim();
-    if (form.lang) state.create.lang = form.lang.value;
-    if (form.ui) state.create.ui = form.ui.checked;
-    if (!state.create.type) state.create.type = suggestType(state.create.description);
+    const auto = form.querySelector('input[name="autoInstall"]');
+    state.create.autoInstall = !!(auto && auto.checked && !auto.disabled);
+    state.create.settings = readSettings(form);
     const agents = ((state.data.home && state.data.home.agents) || []).filter((a) => a.found);
     if (!state.create.agent && agents[0]) state.create.agent = agents[0].name;
     const edit = hashQuery().get("edit") || state.create.edit;
-    if (edit) {
-      state.create.edit = edit;
-      startAgent(state.create.description, "");
-      return;
-    }
-    act("scaffold", async () => {
-      const draft = await api("/api/create/scaffold", {
-        method: "POST",
-        body: {
-          name: state.create.name,
-          description: state.create.description,
-          type: state.create.type,
-          lang: state.create.lang,
-          ui: state.create.ui,
-        },
-      });
-      state.create.path = draft.path;
-      state.create.name = draft.name;
-      state.create.type = draft.type;
-      await startAgent(state.create.description, "");
-    });
+    const tmpl = selectedTemplate();
+    startCreate(edit, tmpl);
   } else if (kind === "preview-install") {
     state.installPath = form.path.value.trim();
     act("preview", async () => {
@@ -1998,74 +2082,120 @@ document.addEventListener("keydown", (ev) => {
   }
 });
 
-async function startAgent(description, fix) {
-  state.create.phase = "run";
-  state.create.status = "running";
-  state.create.log = "";
-  state.create.report = null;
-  state.create.message = "";
-  state.create.card = null;
-  state.error = "";
-  render();
-  const body = {
-    path: state.create.path,
-    plugin: state.create.edit || "",
-    agent: state.create.agent,
-    description,
-    fix,
-  };
-  const run = await api("/api/create/run", { method: "POST", body });
-  state.create.runId = run.id;
-  state.create.log = run.log || "";
-  render();
+function readSettings(form) {
+  const out = {};
+  form.querySelectorAll("[data-setting]").forEach((el) => {
+    const key = el.dataset.setting;
+    const type = el.dataset.type || "string";
+    if (type === "bool") out[key] = !!el.checked;
+    else if (type === "number") {
+      const n = Number(el.value);
+      if (el.value !== "" && Number.isFinite(n)) out[key] = n;
+    } else if (type === "list") {
+      out[key] = String(el.value || "").split("\n").map((s) => s.trim()).filter(Boolean);
+    } else if (String(el.value || "").trim() !== "") out[key] = el.value.trim();
+  });
+  return out;
 }
 
-async function pollCreate() {
-  if (state.route !== "create" || state.create.status !== "running" || !state.create.runId) return;
-  const decide = window.DAPCreate || { outcome: () => ({ step: "error", message: "Create logic failed to load.", retry: true }), afterValidation: () => ({ step: "fix", propose: false, message: "Validation did not pass." }), logTail: (s) => s };
+function applyJob(job) {
+  if (!job || !job.id) return;
+  state.create.id = job.id;
+  state.create.status = job.status || "";
+  state.create.step = job.step || "";
+  state.create.log = job.log || "";
+  state.create.card = job.card || null;
+  state.create.failedChecks = job.failedChecks || [];
+  state.create.error = job.error || "";
+  state.create.name = job.name || state.create.name;
+  state.create.autoInstall = !!job.autoInstall;
+  state.create.template = job.template || state.create.template;
+  state.create.mode = job.mode || "";
+  if (job.description) state.create.description = job.description;
+  if (job.agent) state.create.agent = job.agent;
+  state.create.phase = "run";
+  state.create.edit = job.mode === "edit" ? (job.name || state.create.edit) : state.create.edit;
+}
+
+async function startCreate(edit, tmpl) {
+  state.create.phase = "run";
+  state.create.status = "running";
+  state.create.step = "scaffold";
+  state.create.log = "Started.";
+  state.create.card = null;
+  state.create.failedChecks = [];
+  state.create.error = "";
+  state.create.mode = edit ? "edit" : (tmpl ? tmpl.mode : "blank");
+  state.error = "";
+  render();
   try {
-    const run = await api("/api/create/run/" + state.create.runId);
-    state.create.log = run.log || state.create.log;
-    if (run.error && state.create.log.indexOf(run.error) === -1) {
-      state.create.log += (state.create.log ? "\n" : "") + run.error;
-    }
-    if (run.status === "running") {
-      state.create.status = "running";
-      render();
-      return;
-    }
-    const decision = decide.outcome(run);
-    if (decision.step !== "check") {
-      state.create.status = run.status === "cancelled" ? "cancelled" : "failed";
-      state.create.phase = "done";
-      state.create.message = decision.message;
-      render();
-      return;
-    }
-    state.create.status = "checking";
-    render();
-    const rep = await api("/api/create/validate", { method: "POST", body: { path: state.create.path, plugin: state.create.edit || "" } });
-    state.create.report = rep;
-    const after = decide.afterValidation(rep);
-    if (!after.propose) {
-      state.create.status = "needs a fix";
-      state.create.phase = "done";
-      state.create.message = after.message;
-      render();
-      return;
-    }
-    const proposed = await api("/api/create/propose", { method: "POST", body: { path: state.create.path, plugin: state.create.edit || "" } });
-    state.create.status = "passed";
-    state.create.phase = "done";
-    state.create.card = proposed.card || null;
-    if (proposed.path) state.create.path = proposed.path;
-    if (proposed.card && proposed.card.plugin) state.create.name = proposed.card.plugin;
-    state.create.message = "";
+    const job = await api("/api/create", {
+      method: "POST",
+      body: {
+        description: state.create.description,
+        agent: state.create.mode === "install" ? "" : state.create.agent,
+        name: state.create.name,
+        autoInstall: state.create.autoInstall,
+        template: tmpl ? tmpl.id : "",
+        settings: state.create.settings,
+        plugin: edit || "",
+      },
+    });
+    applyJob(job);
     render();
   } catch (err) {
     state.create.status = "failed";
-    state.create.phase = "done";
-    state.create.message = err.message || "Something went wrong. Nothing was proposed.";
+    state.create.step = "done";
+    state.create.phase = "run";
+    state.create.error = err.message || "Could not start. Nothing was installed.";
+    render();
+  }
+}
+
+async function retryCreate() {
+  if (!state.create.id) return;
+  state.create.status = "running";
+  state.create.step = "agent";
+  state.create.error = "";
+  state.create.failedChecks = [];
+  state.create.phase = "run";
+  render();
+  try {
+    const job = await api("/api/create/" + state.create.id + "/retry", { method: "POST", body: {} });
+    applyJob(job);
+    render();
+  } catch (err) {
+    state.create.status = "failed";
+    state.create.step = "done";
+    state.create.error = err.message || "Retry did not start.";
+    render();
+  }
+}
+
+async function hydrateCreate() {
+  if (state.create.hydrated) return;
+  state.create.hydrated = true;
+  try {
+    const listed = await api("/api/templates");
+    state.create.templates = listed.templates || [];
+  } catch (e) { /* the form still works without the catalog */ }
+  if (state.create.phase === "run" && state.create.id) return;
+  try {
+    const current = await api("/api/create/current");
+    if (current && current.id && !hashQuery().get("edit")) applyJob(current);
+  } catch (e) { /* a missing job leaves the form */ }
+}
+
+async function pollCreate() {
+  if (state.route !== "create" || state.create.phase !== "run" || state.create.status !== "running" || !state.create.id) return;
+  try {
+    const job = await api("/api/create/" + state.create.id);
+    applyJob(job);
+    render();
+  } catch (err) {
+    state.create.status = "failed";
+    state.create.step = "done";
+    state.create.error = err.message || "Lost the create job. Nothing was installed.";
     render();
   }
 }

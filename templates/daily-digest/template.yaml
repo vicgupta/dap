@@ -1,0 +1,15 @@
+id: daily-digest
+title: Daily digest
+blurb: One morning card summarizing yesterday's mail.
+mode: install
+permissions:
+  - mail.read
+connections:
+  - gmail
+  - outlook
+settings:
+  - key: provider
+    type: string
+    label: Mailbox
+    description: gmail, outlook, or fake
+    default: gmail
