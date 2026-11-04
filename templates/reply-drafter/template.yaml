@@ -1,0 +1,16 @@
+id: reply-drafter
+title: Reply drafter
+blurb: Drafts replies for flagged threads and never sends.
+mode: install
+permissions:
+  - mail.read
+  - mail.draft
+connections:
+  - gmail
+  - outlook
+settings:
+  - key: provider
+    type: string
+    label: Mailbox
+    description: gmail, outlook, or fake
+    default: gmail

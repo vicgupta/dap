@@ -23,6 +23,7 @@ import (
 	"github.com/vicgupta/dap/internal/guardrails"
 	"github.com/vicgupta/dap/internal/layout"
 	"github.com/vicgupta/dap/internal/model"
+	"github.com/vicgupta/dap/internal/pluginauthor"
 	"github.com/vicgupta/dap/internal/theme"
 	"github.com/vicgupta/dap/internal/web"
 )
@@ -113,7 +114,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /layout.css", file(static, "layout.css"))
 	mux.HandleFunc("GET /layout-boot.js", file(static, "layout-boot.js"))
 	mux.HandleFunc("GET /layout-logic.js", file(static, "layout-logic.js"))
-	mux.HandleFunc("GET /create-logic.js", file(static, "create-logic.js"))
 	mux.HandleFunc("GET /app.css", file(static, "app.css"))
 	mux.HandleFunc("GET /app.js", file(static, "app.js"))
 	mux.HandleFunc("GET /favicon.svg", file(static, "favicon.svg"))
@@ -140,12 +140,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/plugins/{name}/remove", s.auth(s.remove))
 	mux.HandleFunc("POST /api/plugins/{name}/approve", s.auth(s.approveManifest))
 	mux.HandleFunc("POST /api/plugins/{name}/run", s.auth(s.run))
-	mux.HandleFunc("POST /api/create/scaffold", s.auth(s.createScaffold))
-	mux.HandleFunc("POST /api/create/run", s.auth(s.createRun))
-	mux.HandleFunc("GET /api/create/run/{id}", s.auth(s.createRunGet))
-	mux.HandleFunc("POST /api/create/run/{id}/cancel", s.auth(s.createRunCancel))
-	mux.HandleFunc("POST /api/create/validate", s.auth(s.createValidate))
-	mux.HandleFunc("POST /api/create/propose", s.auth(s.createPropose))
+	mux.HandleFunc("GET /api/templates", s.auth(s.templates))
+	mux.HandleFunc("POST /api/create", s.auth(s.createPlugin))
+	mux.HandleFunc("GET /api/create/current", s.auth(s.createCurrent))
+	mux.HandleFunc("GET /api/create/{id}", s.auth(s.createGet))
+	mux.HandleFunc("POST /api/create/{id}/retry", s.auth(s.createRetry))
+	mux.HandleFunc("POST /api/create/{id}/cancel", s.auth(s.createCancel))
+	mux.HandleFunc("POST /api/create/{id}/dismiss", s.auth(s.createDismiss))
 	mux.HandleFunc("GET /api/doctor", s.auth(s.doctor))
 	mux.HandleFunc("GET /api/connections", s.auth(s.connections))
 	mux.HandleFunc("POST /api/connections/{provider}/setup", s.auth(s.connectionSetup))
@@ -430,13 +431,22 @@ func (s *Server) run(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-func (s *Server) createScaffold(w http.ResponseWriter, r *http.Request) {
-	var req core.DraftRequest
+func (s *Server) templates(w http.ResponseWriter, r *http.Request) {
+	list, err := pluginauthor.ListTemplates()
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "templates": list})
+}
+
+func (s *Server) createPlugin(w http.ResponseWriter, r *http.Request) {
+	var req core.CreateRequest
 	if err := readJSON(r, &req); err != nil {
 		writeErr(w, err)
 		return
 	}
-	res, err := s.App.ScaffoldDraft(req)
+	res, err := s.App.CreatePlugin(req)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -444,13 +454,17 @@ func (s *Server) createScaffold(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
-func (s *Server) createRun(w http.ResponseWriter, r *http.Request) {
-	var req core.AgentStart
-	if err := readJSON(r, &req); err != nil {
-		writeErr(w, err)
+func (s *Server) createCurrent(w http.ResponseWriter, r *http.Request) {
+	res, ok := s.App.CurrentCreate()
+	if !ok {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 		return
 	}
-	res, err := s.App.StartAgent(req)
+	writeJSON(w, http.StatusOK, res)
+}
+
+func (s *Server) createGet(w http.ResponseWriter, r *http.Request) {
+	res, err := s.App.CreateJob(r.PathValue("id"))
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -458,8 +472,8 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
-func (s *Server) createRunGet(w http.ResponseWriter, r *http.Request) {
-	res, err := s.App.AgentRun(r.PathValue("id"))
+func (s *Server) createRetry(w http.ResponseWriter, r *http.Request) {
+	res, err := s.App.RetryCreate(r.PathValue("id"))
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -467,55 +481,20 @@ func (s *Server) createRunGet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
-func (s *Server) createRunCancel(w http.ResponseWriter, r *http.Request) {
-	if err := s.App.CancelAgent(r.PathValue("id")); err != nil {
+func (s *Server) createCancel(w http.ResponseWriter, r *http.Request) {
+	if err := s.App.CancelCreate(r.PathValue("id")); err != nil {
 		writeErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-func (s *Server) createValidate(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Path   string `json:"path"`
-		Plugin string `json:"plugin"`
-	}
-	if err := readJSON(r, &req); err != nil {
+func (s *Server) createDismiss(w http.ResponseWriter, r *http.Request) {
+	if err := s.App.DismissCreate(r.PathValue("id")); err != nil {
 		writeErr(w, err)
 		return
 	}
-	rep, err := s.App.ValidateDraft(req.Path, req.Plugin)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, rep)
-}
-
-func (s *Server) createPropose(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Path   string `json:"path"`
-		Plugin string `json:"plugin"`
-	}
-	if err := readJSON(r, &req); err != nil {
-		writeErr(w, err)
-		return
-	}
-	card, err := s.App.ProposePluginChange(req.Path, req.Plugin)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	path := ""
-	var payload struct {
-		Install *struct {
-			Path string `json:"path"`
-		} `json:"install"`
-	}
-	if err := json.Unmarshal(card.Payload, &payload); err == nil && payload.Install != nil {
-		path = payload.Install.Path
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "card": card, "path": path})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (s *Server) connections(w http.ResponseWriter, r *http.Request) {

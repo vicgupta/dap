@@ -10,6 +10,9 @@ import (
 // Temp is <dataDir>/tmp.
 func Temp(dataDir string) string { return filepath.Join(dataDir, "tmp") }
 
+// Jobs is <dataDir>/create, where Create plugin stores job records.
+func Jobs(dataDir string) string { return filepath.Join(dataDir, "create") }
+
 // NpmCache is the npm cache DAP points child processes at.
 func NpmCache(dataDir string) string { return filepath.Join(dataDir, "cache", "npm") }
 

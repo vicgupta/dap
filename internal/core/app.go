@@ -125,7 +125,7 @@ func Open(dir string) (*App, error) {
 		_ = lk.Release()
 		return nil, err
 	}
-	return &App{
+	app := &App{
 		DataDir:    abs,
 		store:      st,
 		ledger:     led,
@@ -137,7 +137,9 @@ func Open(dir string) (*App, error) {
 		rt:         map[string]*runtime{},
 		busy:       map[string]int{},
 		adminToken: randomToken(),
-	}, nil
+	}
+	app.loadCreateJobs()
+	return app, nil
 }
 
 // Close shuts DAP down and releases the data directory.

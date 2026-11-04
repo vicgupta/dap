@@ -119,6 +119,8 @@ Optional query parameters limit the window:
 
 With neither parameter, Gmail and Outlook return about the last 30 days. Composio Gmail receives the window as a Gmail search (`newer_than:1d` or `after:<unix>`). Composio Outlook and direct Microsoft Graph receive `receivedDateTime ge <timestamp>`, and the host also drops threads older than the cutoff. A plugin that asks for the last 24 hours calls `mailThreads("gmail", { newer_than: "24h" })` or `mail_threads("outlook", newer_than="24h")`.
 
+`web.fetch` is the declaration a plugin uses when it fetches public `http` and `https` pages itself. It does not open a host proxy. Anything other than those two schemes stays out. Declare it `ask_first` when a person should see each page check in the inbox.
+
 `mail.draft` allows `POST /mail/draft`, which saves a draft and does not send. `mail.send` allows `POST /mail/send`, and only when the body includes `card_id` for an approved card whose effects include `sends`. The SDK helpers are `mailThreads`, `mailDraft`, and `mailSend` in TypeScript, and `mail_threads`, `mail_draft`, and `mail_send` in Python. A send still waits for a person even if you also declare the permission as `allowed`. Declare `mail.draft` when you only prepare text, and offer that text as a change card.
 
 A person can tighten a permission (`allowed` to `ask_first`, or either to `never`). They cannot loosen one. Your manifest cannot override that.
@@ -311,7 +313,8 @@ Theme and density: link `/theme-boot.js`, `/layout-boot.js`, `/theme.css`, and `
 | --- | --- |
 | `./.dap` or `$DAP_HOME` or `--data` | The DAP data directory, mode `0700`, inside the folder where you run `da` |
 | `plugin-data/<name>/` | `data_dir` in `initialize`. Yours. |
-| `drafts/<name>/` | Where **Create plugin** scaffolds a new plugin |
+| `drafts/draft-<id>/` | Where **Create plugin** scaffolds a new plugin. The folder is renamed to the name in `plugin.yaml` once. |
+| `create/<id>.json` | One Create plugin job, so a reload or restart can show it |
 | `ledger.jsonl` | Append-only. You can add rows with `POST /log`. You cannot edit or delete rows. |
 | `state.json` | The core's copy of config, cards, and your scratch JSON |
 
@@ -334,7 +337,7 @@ da plugin remove note-watch
 
 `install` records the absolute path. It does not copy the folder. Adding a permission, or changing `ask_first` to `allowed`, will not start until `da plugin approve` or the Plugins page.
 
-**Create plugin** in the UI scaffolds into `drafts/`, runs your coding agent there, validates, and puts a change card in the inbox. Approving the card is what installs or reloads. The UI never installs by itself.
+**Create plugin** scaffolds into `drafts/draft-<id>/`, runs your coding agent there, checks that the starter marker is gone and `plugin.yaml` is no longer the starter, validates once, and writes a change card. Approve or deny that card on the Create page. If you checked **Install automatically when created** and every check passes, DAP approves the card and installs it. A failed check installs nothing and leaves the draft, with one Retry that sends the failed checks back to the agent. An edit or reload of a plugin that is already installed still waits for a pending card. Templates under `templates/` are either ready to install or a starting point the agent customizes.
 
 `da plugin dev` prints one JSON object per line (`ready`, `stderr`, `reload`, `stop`) and restarts the process when a file in the directory changes. Ctrl+C stops it.
 

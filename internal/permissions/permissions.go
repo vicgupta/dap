@@ -69,6 +69,8 @@ func humanize(name string) string {
 		return "Send mail as you"
 	case "web.read":
 		return "Read public web pages"
+	case "web.fetch":
+		return "Fetch the public pages this plugin lists"
 	case "files.write":
 		return "Write local files"
 	case "share.team":

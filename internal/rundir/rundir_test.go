@@ -35,6 +35,9 @@ func TestApplyKeepsHomeAndRedirectsTemp(t *testing.T) {
 	if got["PIP_CACHE_DIR"] != filepath.Join(dir, "cache", "pip") {
 		t.Fatalf("pip %q", got["PIP_CACHE_DIR"])
 	}
+	if Jobs(dir) != filepath.Join(dir, "create") || strings.HasPrefix(Jobs(dir), Temp(dir)) {
+		t.Fatalf("jobs %s temp %s", Jobs(dir), Temp(dir))
+	}
 	if _, err := os.Stat(got["TMPDIR"]); err != nil {
 		t.Fatal(err)
 	}

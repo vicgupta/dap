@@ -1,266 +1,36 @@
 package core
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
-	"sync"
-	"time"
 
-	"github.com/vicgupta/dap/internal/agentrun"
 	"github.com/vicgupta/dap/internal/id"
 	"github.com/vicgupta/dap/internal/ledger"
 	"github.com/vicgupta/dap/internal/manifest"
 	"github.com/vicgupta/dap/internal/model"
 	"github.com/vicgupta/dap/internal/permissions"
-	"github.com/vicgupta/dap/internal/pluginauthor"
 	"github.com/vicgupta/dap/internal/store"
 )
 
-// DraftRequest is the Create plugin form.
-type DraftRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Type        string `json:"type"`
-	Lang        string `json:"lang"`
-	UI          bool   `json:"ui"`
-	Edit        string `json:"edit,omitempty"`
-}
-
-// DraftResult is a scaffolded directory plus the type DAP suggested.
-type DraftResult struct {
-	OK        bool   `json:"ok"`
-	Path      string `json:"path"`
-	Name      string `json:"name"`
-	Type      string `json:"type"`
-	Suggested string `json:"suggested"`
-}
-
-// ScaffoldDraft writes a new plugin under the data directory's drafts folder.
-func (a *App) ScaffoldDraft(req DraftRequest) (DraftResult, error) {
-	suggested := pluginauthor.SuggestType(req.Description)
-	kind := req.Type
-	if kind == "" {
-		kind = suggested
-	}
-	name, provisional, err := choosePluginName(req.Name, req.Description)
+// preparePluginChange builds an install or reload card. It does not validate
+// and it does not write the card. The caller has already checked the draft.
+func (a *App) preparePluginChange(dir string, settings map[string]any) (model.Card, bool, error) {
+	m, err := manifest.Load(dir)
 	if err != nil {
-		return DraftResult{}, err
+		return model.Card{}, false, err
 	}
-	dir := filepath.Join(a.DataDir, "drafts", name)
-	path, err := pluginauthor.Scaffold(pluginauthor.Options{
-		Name:        name,
-		Type:        kind,
-		Lang:        req.Lang,
-		UI:          req.UI,
-		Description: req.Description,
-		Dir:         dir,
-	})
-	if err != nil {
-		return DraftResult{}, err
-	}
-	files, err := hashTree(path)
-	if err != nil {
-		return DraftResult{}, err
-	}
-	if err := a.writeDraftMeta(draftMeta{Name: name, Provisional: provisional, Files: files}); err != nil {
-		return DraftResult{}, err
-	}
-	return DraftResult{OK: true, Path: path, Name: name, Type: kind, Suggested: suggested}, nil
-}
-
-type agentJob struct {
-	ID     string
-	Path   string
-	Status string
-	Log    string
-	Err    string
-	cancel context.CancelFunc
-	done   chan struct{}
-}
-
-// AgentRun is the polled view of one agent process.
-type AgentRun struct {
-	OK      bool   `json:"ok"`
-	ID      string `json:"id"`
-	Status  string `json:"status"`
-	Log     string `json:"log"`
-	Error   string `json:"error,omitempty"`
-	Changed *bool  `json:"changed,omitempty"`
-	Message string `json:"message,omitempty"`
-}
-
-func (a *App) jobs() *sync.Map {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.agentJobs == nil {
-		a.agentJobs = &sync.Map{}
-	}
-	return a.agentJobs
-}
-
-// AgentStart is one Create plugin or Edit with agent request.
-type AgentStart struct {
-	Path        string `json:"path"`
-	Plugin      string `json:"plugin"`
-	Agent       string `json:"agent"`
-	Description string `json:"description"`
-	Fix         string `json:"fix"`
-}
-
-// StartAgent runs a coding agent in a draft or an installed plugin directory.
-func (a *App) StartAgent(req AgentStart) (AgentRun, error) {
-	dir := req.Path
-	if req.Plugin != "" {
-		snap := a.store.Snapshot()
-		rec := snap.Plugins[req.Plugin]
-		if rec == nil {
-			return AgentRun{}, fmt.Errorf("%w: plugin %s", ErrNotFound, req.Plugin)
+	if settings != nil {
+		if _, err := manifest.ResolveConfig(m, settings); err != nil {
+			return model.Card{}, false, err
 		}
-		dir = rec.Dir
-	}
-	abs, err := a.allowedPluginDir(dir)
-	if err != nil {
-		return AgentRun{}, err
-	}
-	if strings.TrimSpace(req.Description) == "" && strings.TrimSpace(req.Fix) == "" {
-		return AgentRun{}, fmt.Errorf("describe what the plugin should do")
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	job := &agentJob{ID: id.New("run"), Path: abs, Status: "running", cancel: cancel, done: make(chan struct{})}
-	a.jobs().Store(job.ID, job)
-	prompt := agentrun.Prompt(agentrun.PromptInput{
-		Description: req.Description,
-		FixReport:   req.Fix,
-		DirName:     filepath.Base(abs),
-	})
-	go func() {
-		defer close(job.done)
-		err := agentrun.Run(ctx, agentrun.Request{
-			Agent:   req.Agent,
-			Dir:     abs,
-			DataDir: a.DataDir,
-			Prompt:  prompt,
-			OnLine:  func(line string) { a.appendJob(job, line) },
-		})
-		a.mu.Lock()
-		defer a.mu.Unlock()
-		switch {
-		case ctx.Err() != nil:
-			job.Status = "cancelled"
-		case err != nil:
-			job.Status = "failed"
-			job.Err = err.Error()
-		default:
-			job.Status = "finished"
-		}
-	}()
-	return a.AgentRun(job.ID)
-}
-
-func (a *App) appendJob(job *agentJob, line string) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	job.Log += line + "\n"
-	if len(job.Log) > 256*1024 {
-		job.Log = job.Log[len(job.Log)-256*1024:]
-	}
-}
-
-// AgentRun returns the current log and status.
-func (a *App) AgentRun(id string) (AgentRun, error) {
-	v, ok := a.jobs().Load(id)
-	if !ok {
-		return AgentRun{}, fmt.Errorf("%w: run %s", ErrNotFound, id)
-	}
-	job := v.(*agentJob)
-	a.mu.Lock()
-	out := AgentRun{OK: true, ID: job.ID, Status: job.Status, Log: job.Log, Error: job.Err}
-	path := job.Path
-	a.mu.Unlock()
-	switch out.Status {
-	case "finished":
-		changed, msg := a.draftChanged(path)
-		out.Changed = &changed
-		if !changed {
-			out.Message = msg
-		}
-	case "failed":
-		out.Message = "The coding agent stopped with an error, so DAP did not propose an install."
-	case "cancelled":
-		out.Message = "Cancelled. Nothing was proposed."
-	}
-	return out, nil
-}
-
-// CancelAgent stops a running agent.
-func (a *App) CancelAgent(id string) error {
-	v, ok := a.jobs().Load(id)
-	if !ok {
-		return fmt.Errorf("%w: run %s", ErrNotFound, id)
-	}
-	job := v.(*agentJob)
-	job.cancel()
-	select {
-	case <-job.done:
-	case <-time.After(3 * time.Second):
-	}
-	return nil
-}
-
-// ValidateDraft runs the conformance harness on an allowed directory.
-func (a *App) ValidateDraft(dir, plugin string) (pluginauthor.Report, error) {
-	abs, err := a.resolveCreateDir(dir, plugin)
-	if err != nil {
-		return pluginauthor.Report{}, err
-	}
-	return pluginauthor.ValidateIn(abs, a.DataDir), nil
-}
-
-func (a *App) resolveCreateDir(dir, plugin string) (string, error) {
-	if plugin != "" {
-		snap := a.store.Snapshot()
-		rec := snap.Plugins[plugin]
-		if rec == nil {
-			return "", fmt.Errorf("%w: plugin %s", ErrNotFound, plugin)
-		}
-		dir = rec.Dir
-	}
-	return a.allowedPluginDir(dir)
-}
-
-// ProposePluginChange enqueues a change card. Approval installs a draft or reloads an edit.
-func (a *App) ProposePluginChange(dir, plugin string) (model.Card, error) {
-	abs, err := a.resolveCreateDir(dir, plugin)
-	if err != nil {
-		return model.Card{}, err
-	}
-	if a.isDraft(abs) {
-		changed, msg := a.draftChanged(abs)
-		if !changed {
-			return model.Card{}, errors.New(msg)
-		}
-		abs, err = a.relocateDraft(abs)
-		if err != nil {
-			return model.Card{}, err
-		}
-	}
-	rep := pluginauthor.ValidateIn(abs, a.DataDir)
-	if !rep.OK {
-		return model.Card{}, fmt.Errorf("plugin did not pass validation")
-	}
-	m, err := manifest.Load(abs)
-	if err != nil {
-		return model.Card{}, err
 	}
 	reload := false
 	snap := a.store.Snapshot()
 	if existing := snap.Plugins[m.Name]; existing != nil {
-		if filepath.Clean(existing.Dir) != abs {
-			return model.Card{}, fmt.Errorf("%s is already installed from a different directory", m.Name)
+		if filepath.Clean(existing.Dir) != filepath.Clean(dir) {
+			return model.Card{}, false, fmt.Errorf("%s is already installed from a different directory", m.Name)
 		}
 		reload = true
 	}
@@ -273,9 +43,13 @@ func (a *App) ProposePluginChange(dir, plugin string) (model.Card, error) {
 			summary = "Reload this plugin with the files the agent wrote."
 		}
 	}
-	payload, _ := json.Marshal(map[string]any{
-		"install": map[string]any{"path": abs, "reload": reload},
-	})
+	payloadMap := map[string]any{
+		"install": map[string]any{"path": dir, "reload": reload},
+	}
+	if len(settings) > 0 && !reload {
+		payloadMap["config"] = settings
+	}
+	payload, _ := json.Marshal(payloadMap)
 	now := a.now().UTC()
 	card := model.Card{
 		ID:        id.New("c"),
@@ -292,6 +66,22 @@ func (a *App) ProposePluginChange(dir, plugin string) (model.Card, error) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
+	return card, reload, nil
+}
+
+// commitPluginChange writes the card. approve marks it approved by the user,
+// logs the proposed and approved rows, and installs through applyPluginPayload.
+// A pending card is only proposed. Edits and reloads stay pending.
+func (a *App) commitPluginChange(card model.Card, approve bool) (model.Card, error) {
+	if approve {
+		card.Status = model.StatusApproved
+		card.Actor = model.ActorUser
+		card.Reason = preapprovedReason
+		card.Body = strings.Replace(card.Body,
+			"Approving installs or reloads this plugin. Nothing runs until you approve.",
+			"Pre-approved at create. DAP installs this plugin because every check passed.",
+			1)
+	}
 	if err := a.store.Update(func(st *store.State) error {
 		st.Cards = append(st.Cards, card)
 		return nil
@@ -305,7 +95,24 @@ func (a *App) ProposePluginChange(dir, plugin string) (model.Card, error) {
 		Message: card.Title,
 		Data:    map[string]any{"kind": card.Kind, "install": true},
 	})
-	return card, nil
+	if !approve {
+		return card, nil
+	}
+	a.log(ledger.Entry{
+		Plugin:  card.Plugin,
+		Kind:    ledger.KindApproved,
+		CardID:  card.ID,
+		Message: "Approved “" + card.Title + "”",
+		Data:    map[string]any{"reason": card.Reason, "actor": card.Actor},
+	})
+	if _, err := a.applyPluginPayload(card); err != nil {
+		failed, ferr := a.failCard(card.ID, err)
+		if ferr != nil {
+			return failed, err
+		}
+		return failed, err
+	}
+	return a.completeCard(card.ID, &model.ActResult{Status: "done", Summary: "Installed " + card.Plugin + "."})
 }
 
 func pluginChangeBody(m manifest.Manifest) string {
@@ -366,6 +173,7 @@ func (a *App) applyPluginPayload(card model.Card) (bool, error) {
 			Path   string `json:"path"`
 			Reload bool   `json:"reload"`
 		} `json:"install"`
+		Config map[string]any `json:"config,omitempty"`
 	}
 	if err := json.Unmarshal(card.Payload, &payload); err != nil || payload.Install == nil || payload.Install.Path == "" {
 		return false, nil
@@ -377,7 +185,7 @@ func (a *App) applyPluginPayload(card model.Card) (bool, error) {
 	if payload.Install.Reload {
 		return true, a.reloadPlugin(abs)
 	}
-	_, err = a.Install(abs, true)
+	_, err = a.install(abs, true, payload.Config)
 	return true, err
 }
 

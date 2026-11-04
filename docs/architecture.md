@@ -54,9 +54,10 @@ The admin API used by the UI and the CLI, all under the admin token:
 | POST | `/api/plugins/{name}/remove`, `approve`, `run` |
 | POST | `/api/propose`, `/api/check`, `/api/log`, `/api/outcome`, `/api/tile` |
 | POST | `/api/connections/{provider}/setup`, `connect`, `disconnect`. `provider` is `gmail`, `outlook` (alias `graph`), `fake`, `composio` (API key only), or a toolkit id from `composio/toolkits.json` |
-| POST | `/api/create/scaffold`, `/api/create/run`, `/api/create/validate`, `/api/create/propose` |
-| GET | `/api/create/run/{id}` |
-| POST | `/api/create/run/{id}/cancel` |
+| GET | `/api/templates` |
+| POST | `/api/create` with `description`, `agent`, optional `name`, `autoInstall`, `template`, `settings`, and `plugin` (an edit) |
+| GET | `/api/create/current`, `/api/create/{id}` — status, step, log tail, card, failed checks, error |
+| POST | `/api/create/{id}/retry`, `/api/create/{id}/cancel`, `/api/create/{id}/dismiss` |
 | GET | `/api/quit-status` — whether plugins are running and whether an action is in flight |
 | POST | `/api/quit` — admin token, loopback peer, `X-DAP-Request: quit`, POST only. Starts the shutdown above |
 | GET | `/api/chat/providers`, `/api/chat/sessions`, `/api/chat/sessions/{id}` |

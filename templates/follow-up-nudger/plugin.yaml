@@ -1,0 +1,30 @@
+name: follow-up-nudger
+version: 0.1.0
+min_dap_version: 0.1.0
+type: watcher
+interface: dap.plugin.v1
+description: Drafts a follow-up when a thread has been waiting. Nothing is sent.
+runtime: node
+entrypoint: dist/index.js
+permissions:
+  - name: mail.read
+    mode: allowed
+    description: Read threads to see who is waiting
+  - name: mail.draft
+    mode: allowed
+    description: Prepare a follow-up draft. Nothing is sent.
+provides:
+  - follow-ups
+config:
+  - key: wait_hours
+    type: number
+    description: How long a thread sits before it needs a nudge
+    default: 24
+  - key: signature
+    type: string
+    description: Name signed on drafts
+    default: You
+schedule:
+  every: 1h
+tile:
+  size: medium

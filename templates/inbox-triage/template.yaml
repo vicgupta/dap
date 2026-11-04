@@ -1,0 +1,20 @@
+id: inbox-triage
+title: Inbox triage
+blurb: Labels and summarizes new threads into Inbox cards.
+mode: install
+permissions:
+  - mail.read
+connections:
+  - gmail
+  - outlook
+settings:
+  - key: provider
+    type: string
+    label: Mailbox
+    description: gmail, outlook, or fake
+    default: gmail
+  - key: top
+    type: number
+    label: Threads to show
+    description: How many new threads land on the card
+    default: 5

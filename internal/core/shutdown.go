@@ -78,6 +78,7 @@ func (a *App) shutdown() error {
 	a.mu.Lock()
 	a.stopping = true
 	a.mu.Unlock()
+	a.cancelCreateJobs()
 	a.StopScheduler()
 	a.stopChat()
 	a.waitIdle(ShutdownActTimeout)

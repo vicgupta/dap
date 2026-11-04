@@ -1,0 +1,11 @@
+id: scheduled-checklist
+title: Scheduled checklist
+blurb: Built on the workflow plugin. Any sending step pauses for approval.
+mode: customize
+description: |
+  Run my checklist on a schedule. Keep the steps in order.
+  Any step that sends, spends, or deletes must pause for my approval.
+permissions:
+  - workflow.run
+connections: []
+settings: []

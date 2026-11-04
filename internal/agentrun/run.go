@@ -7,9 +7,9 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os/exec"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Spec is one supported agent CLI.
@@ -36,8 +36,16 @@ const openCodePermissions = `{"permission":{"read":"allow","edit":"allow","exter
 // is set. Drafts are not repositories.
 // https://developers.openai.com/codex/noninteractive
 var Agents = []Spec{
+	// The prompt is not an argument. Each CLI reads it from stdin, which keeps a
+	// multiline prompt intact when Windows launches a .cmd shim.
+	// Claude: `claude -p` with no prompt argument reads stdin.
+	// https://code.claude.com/docs/en/headless
 	{ID: "claude", Hint: "Install Claude Code and run claude once so this machine is logged in. https://docs.anthropic.com/en/docs/claude-code", Args: []string{"-p", "--permission-mode", "acceptEdits", "--allowedTools", claudeAllowedTools}},
-	{ID: "codex", Hint: "Install Codex and log in with your ChatGPT account. The command is codex exec.", Args: []string{"exec", "--sandbox", "workspace-write", "--skip-git-repo-check"}},
+	// Codex: `codex exec -` reads the prompt from stdin. A missing prompt does too;
+	// the dash makes that explicit. https://learn.chatgpt.com/docs/developer-commands
+	{ID: "codex", Hint: "Install Codex and log in with your ChatGPT account. The command is codex exec.", Args: []string{"exec", "--sandbox", "workspace-write", "--skip-git-repo-check", "-"}},
+	// OpenCode: `opencode run` with no message reads stdin when it is not a terminal.
+	// https://opencode.ai/docs/cli
 	{ID: "opencode", Hint: "Install OpenCode and log in. The command is opencode run.", Args: []string{"run", "--auto"}},
 }
 
@@ -89,16 +97,20 @@ type Request struct {
 	OnLine  func(string)
 }
 
-// Run starts the agent and streams combined output. Cancel kills the process.
+// Run starts the agent and streams combined output. Cancel kills the process
+// tree. The prompt is written to stdin and never placed on the command line:
+// Claude, Codex, and OpenCode all read it from there, and a Windows .cmd
+// wrapper would otherwise split a multiline argument.
 func Run(ctx context.Context, req Request) error {
 	spec, bin, err := Find(req.Agent)
 	if err != nil {
 		return err
 	}
-	args := append(append([]string{}, spec.Args...), req.Prompt)
-	cmd := exec.CommandContext(ctx, bin, args...)
+	args := append([]string{}, spec.Args...)
+	cmd := command(ctx, bin, args)
 	cmd.Dir = req.Dir
 	cmd.Env = commandEnv(req.Agent, req.DataDir)
+	cmd.Stdin = strings.NewReader(req.Prompt)
 	setProcGroup(cmd)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -108,9 +120,15 @@ func Run(ctx context.Context, req Request) error {
 	if err != nil {
 		return err
 	}
+	cmd.Cancel = func() error {
+		killProc(cmd)
+		return nil
+	}
+	cmd.WaitDelay = 3 * time.Second
 	if err := cmd.Start(); err != nil {
 		return err
 	}
+	attachJob(cmd)
 	var wg sync.WaitGroup
 	stream := func(r io.Reader) {
 		defer wg.Done()
@@ -143,6 +161,8 @@ func Run(ctx context.Context, req Request) error {
 type PromptInput struct {
 	Description string
 	FixReport   string
+	// Name is the optional name from the form. Empty means the agent chooses one.
+	Name string
 	// DirName is the draft folder. A draft- prefix is a placeholder the agent must replace.
 	DirName string
 }
@@ -152,9 +172,12 @@ func Prompt(in PromptInput) string {
 	var b strings.Builder
 	b.WriteString("Work only in the current folder using AGENTS.md and the vendored SDK, never clone the repo, and run the build and da plugin validate before finishing. ")
 	b.WriteString("Remove the DAP_SCAFFOLD_STARTER marker and replace the idle starter with the plugin the user asked for. ")
+	b.WriteString("Change plugin.yaml so it is not the starter manifest: set the description, the type, and the smallest permissions that do the job. ")
 	b.WriteString("Do not bypass guardrails. Use the least permissions that work. ")
 	b.WriteString("Do not handle raw tokens. Stdout of the plugin must be JSON-RPC only.\n")
-	if strings.HasPrefix(in.DirName, "draft-") {
+	if strings.TrimSpace(in.Name) != "" {
+		b.WriteString("Set name in plugin.yaml to " + strings.TrimSpace(in.Name) + " and keep that name.\n")
+	} else if strings.HasPrefix(in.DirName, "draft-") {
 		b.WriteString("This folder name is a placeholder. Set name in plugin.yaml to a short kebab-case name (lowercase letters, numbers, and hyphens) and do not leave the draft- placeholder.\n")
 	}
 	b.WriteString("\nUser request:\n")
