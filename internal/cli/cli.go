@@ -216,7 +216,7 @@ func legacyDataHint(chosen string, usedDefault bool) string {
 	if err != nil || !st.IsDir() {
 		return ""
 	}
-	return "An older data directory exists at " + legacy + ". DAP is using " + chosenAbs + " in this folder and left the old one in place.\n"
+	return "An older data directory exists at " + legacy + ". DAP is using " + chosenAbs + " in this folder and left the old one in place. Keys saved in the OS keychain by an older version need to be entered again once.\n"
 }
 
 func cmdInit(dir string) (any, error) {

@@ -201,7 +201,7 @@ fi
 
 awk -v tag="$tag" '
   index($0, "DAP_TAG:-") {
-    print "TAG=\"${DAP_TAG:-" tag "}\""
+    print "FALLBACK_TAG=\"${DAP_TAG:-" tag "}\""
     next
   }
   { print }

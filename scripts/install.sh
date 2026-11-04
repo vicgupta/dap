@@ -11,7 +11,23 @@
 set -eu
 
 REPO="${DAP_REPO:-vicgupta/dap}"
-TAG="${DAP_TAG:-v0.1.0-alpha.4}"
+# Newest GitHub release, including pre-releases (/releases/latest skips those).
+# FALLBACK_TAG is used when that API does not answer. DAP_TAG overrides both.
+FALLBACK_TAG="${DAP_TAG:-v0.1.0-alpha.4}"
+resolve_tag() {
+  if [ -n "${DAP_TAG-}" ]; then
+    printf '%s\n' "$DAP_TAG"
+    return
+  fi
+  body=$(curl -fsSL -H "Accept: application/vnd.github+json" \
+    "https://api.github.com/repos/${REPO}/releases?per_page=1" || true)
+  tag=$(printf '%s\n' "$body" | awk -F'"' '/"tag_name"/ { print $4; exit }')
+  if [ -z "$tag" ]; then
+    tag=$FALLBACK_TAG
+  fi
+  printf '%s\n' "$tag"
+}
+TAG=$(resolve_tag)
 VER="${TAG#v}"
 
 dest="${DAP_INSTALL_DIR:-}"

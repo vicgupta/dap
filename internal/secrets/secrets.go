@@ -39,6 +39,9 @@ func NewFile(dir string) (Keeper, error) {
 			return nil, err
 		}
 	}
+	if err := tightenSecret(path); err != nil {
+		return nil, err
+	}
 	return &fileKeeper{path: path}, nil
 }
 
@@ -106,7 +109,13 @@ func (f *fileKeeper) write(m map[string]string) error {
 	if err := os.WriteFile(tmp, append(b, '\n'), 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, f.path)
+	if err := tightenSecret(tmp); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, f.path); err != nil {
+		return err
+	}
+	return tightenSecret(f.path)
 }
 
 // NewAuto stores secrets in the data directory. DAP_SECRETS is ignored so a

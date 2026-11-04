@@ -13,7 +13,21 @@ param(
 $ErrorActionPreference = "Stop"
 
 $Repo = if ($env:DAP_REPO) { $env:DAP_REPO } else { "vicgupta/dap" }
-$Tag = if ($env:DAP_TAG) { $env:DAP_TAG } else { "v0.1.0-alpha.4" }
+# Newest GitHub release, including pre-releases (/releases/latest skips those).
+# FallbackTag is used when that API does not answer. DAP_TAG overrides both.
+$FallbackTag = if ($env:DAP_TAG) { $env:DAP_TAG } else { "v0.1.0-alpha.4" }
+if ($env:DAP_TAG) {
+  $Tag = $env:DAP_TAG
+} else {
+  $Tag = $FallbackTag
+  try {
+    $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases?per_page=1" -Headers @{ Accept = "application/vnd.github+json" } -UseBasicParsing
+    if ($rel -is [System.Array]) { $rel = $rel[0] }
+    if ($rel.tag_name) { $Tag = [string]$rel.tag_name }
+  } catch {
+    $Tag = $FallbackTag
+  }
+}
 $Ver = $Tag.TrimStart("v")
 
 if ($InstallDir) {

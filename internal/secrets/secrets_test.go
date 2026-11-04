@@ -44,4 +44,17 @@ func TestFileRoundTrip(t *testing.T) {
 	if info.Mode().Perm()&0o077 != 0 {
 		t.Fatalf("mode %o", info.Mode().Perm())
 	}
+	if err := os.Chmod(dir+"/secrets.json", 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewFile(dir); err != nil {
+		t.Fatal(err)
+	}
+	info, err = os.Stat(dir + "/secrets.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		t.Fatalf("existing file not tightened: %o", info.Mode().Perm())
+	}
 }

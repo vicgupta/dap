@@ -27,7 +27,7 @@ packaging/windows/package.sh "$tag"
 out="$root/dist/release"
 awk -v tag="$tag" '
   index($0, "DAP_TAG:-") {
-    print "TAG=\"${DAP_TAG:-" tag "}\""
+    print "FALLBACK_TAG=\"${DAP_TAG:-" tag "}\""
     next
   }
   { print }
@@ -36,7 +36,7 @@ chmod 755 "$out/install.sh"
 
 awk -v tag="$tag" '
   index($0, "$env:DAP_TAG") && index($0, "else") {
-    print "$Tag = if ($env:DAP_TAG) { $env:DAP_TAG } else { \"" tag "\" }"
+    print "$FallbackTag = if ($env:DAP_TAG) { $env:DAP_TAG } else { \"" tag "\" }"
     next
   }
   { print }

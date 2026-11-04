@@ -129,7 +129,7 @@ A schedule is one of `every` (Go duration, at least `5s`), a five-field cron exp
 
 `ledger.jsonl` is append-only. Rows are JSON lines. There is no update and no delete. Kinds the core writes include `plugin.install`, `plugin.remove`, `plugin.start`, `schedule.run`, `schedule.missed`, `card.proposed`, `card.approved`, `card.edited`, `card.rejected`, `card.snoozed`, `card.acted`, `card.blocked`, `card.failed`, `config.applied`, `guardrail.check`, `permission.denied`, `plugin.log`, `tile.write`, and `outcome`.
 
-Secrets use a `Keeper`. They are stored in `./.dap/secrets.json` (mode `0600`). DAP does not write the OS keychain, Credential Manager, or Secret Service.
+Secrets use a `Keeper`. They are stored in `./.dap/secrets.json` (mode `0600`). DAP does not write the OS keychain, Credential Manager, or Secret Service. Keys saved in the OS keychain by an older version need to be entered again once.
 
 Claude Code, Codex, and OpenCode keep their own existing logins. DAP does not move those files. Processes DAP starts use `./.dap/tmp` for temporary files, and npm and pip caches under `./.dap/cache`.
 

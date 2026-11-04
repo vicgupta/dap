@@ -4,7 +4,7 @@ v0.1.0-alpha.1 is a private GitHub pre-release built from `main` `546a2e1`. That
 
 The release workflow on this branch, once it is on `main`, builds macOS, Linux, and Windows for a later `v*` tag. Themes (PR #4) and the plugin creator (PR #5) are not in v0.1.0-alpha.1.
 
-Downloads are public HTTPS. `install.sh` and `install.ps1` use `curl` or `Invoke-WebRequest` against `https://github.com/vicgupta/dap/releases/download/<tag>/`. They do not use the `gh` CLI. `/releases/latest/download/` skips pre-releases, so the scripts use the tag. They copy `da` into the current folder, check SHA256, and keep data in `./.dap` in that folder.
+Downloads are public HTTPS. `install.sh` and `install.ps1` ask `https://api.github.com/repos/vicgupta/dap/releases?per_page=1` for the newest release, including pre-releases, then download that tag from `https://github.com/vicgupta/dap/releases/download/<tag>/`. They do not use the `gh` CLI. `/releases/latest/download/` skips pre-releases, so the scripts do not use it. If the API does not answer, they fall back to `v0.1.0-alpha.4`. `DAP_TAG` overrides both. They copy `da` into the current folder, check SHA256, and keep data in `./.dap` in that folder.
 
 ## v0.1.0-alpha.1 (macOS)
 
