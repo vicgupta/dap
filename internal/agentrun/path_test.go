@@ -8,12 +8,10 @@ import (
 	"testing"
 )
 
-func TestExtraBinDirsDarwinOrder(t *testing.T) {
+func TestExtraBinDirsAddsNothing(t *testing.T) {
 	home := t.TempDir()
 	for _, rel := range []string{
-		".nvm/versions/node/v20.10.0/bin",
 		".nvm/versions/node/v22.2.0/bin",
-		".nvm/versions/node/v9.1.0/bin",
 		".volta/bin",
 		".local/bin",
 	} {
@@ -21,33 +19,14 @@ func TestExtraBinDirsDarwinOrder(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	dirs := extraBinDirs(home, "darwin", func(p string) bool {
-		if p == "/opt/homebrew/bin" || p == "/usr/local/bin" {
-			return true
+	exists := func(string) bool { return true }
+	for _, goos := range []string{"darwin", "linux", "windows"} {
+		if got := extraBinDirs(home, goos, exists); len(got) != 0 {
+			t.Fatalf("%s: %v", goos, got)
 		}
-		st, err := os.Stat(p)
-		return err == nil && st.IsDir()
-	})
-	want := []string{
-		"/opt/homebrew/bin",
-		"/usr/local/bin",
-		filepath.Join(home, ".nvm/versions/node/v22.2.0/bin"),
-		filepath.Join(home, ".nvm/versions/node/v20.10.0/bin"),
-		filepath.Join(home, ".nvm/versions/node/v9.1.0/bin"),
-		filepath.Join(home, ".volta/bin"),
-		filepath.Join(home, ".local/bin"),
-	}
-	if strings.Join(dirs, "\n") != strings.Join(want, "\n") {
-		t.Fatalf("got\n%s\nwant\n%s", strings.Join(dirs, "\n"), strings.Join(want, "\n"))
-	}
-}
-
-func TestExtraBinDirsSkippedOffDarwin(t *testing.T) {
-	if got := extraBinDirs("/home/someone", "linux", func(string) bool { return true }); len(got) != 0 {
-		t.Fatalf("%v", got)
-	}
-	if got := extraBinDirs("/Users/someone", "windows", func(string) bool { return true }); len(got) != 0 {
-		t.Fatalf("%v", got)
+		if got := augmentPath("/usr/bin", home, goos); got != "/usr/bin" {
+			t.Fatalf("%s augment: %s", goos, got)
+		}
 	}
 }
 
@@ -82,7 +61,7 @@ func TestLookInFindsExecutable(t *testing.T) {
 }
 
 func TestCommandEnvScopesOpenCode(t *testing.T) {
-	env := commandEnv("opencode")
+	env := commandEnv("opencode", "")
 	var found string
 	for _, e := range env {
 		if strings.HasPrefix(e, "OPENCODE_CONFIG_CONTENT=") {
@@ -92,12 +71,38 @@ func TestCommandEnvScopesOpenCode(t *testing.T) {
 	if found == "" || !strings.Contains(found, `"edit":"allow"`) || !strings.Contains(found, "npm *") || !strings.Contains(found, "da plugin validate") {
 		t.Fatalf("%s", found)
 	}
-	if strings.Contains(commandEnv("claude")[len(commandEnv("claude"))-1], "OPENCODE_CONFIG_CONTENT=") && !strings.HasPrefix(os.Getenv("OPENCODE_CONFIG_CONTENT"), "") {
+	if strings.Contains(commandEnv("claude", "")[len(commandEnv("claude", ""))-1], "OPENCODE_CONFIG_CONTENT=") && !strings.HasPrefix(os.Getenv("OPENCODE_CONFIG_CONTENT"), "") {
 		// claude must not gain the opencode override unless the parent already had it
 	}
-	for _, e := range commandEnv("claude") {
+	for _, e := range commandEnv("claude", "") {
 		if strings.HasPrefix(e, "OPENCODE_CONFIG_CONTENT=") && os.Getenv("OPENCODE_CONFIG_CONTENT") == "" {
 			t.Fatal("claude env should not invent an opencode config")
 		}
+	}
+}
+
+func TestCommandEnvKeepsHomeAndRedirectsTemp(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", "/keep/this-home")
+	t.Setenv("TMPDIR", "/system/tmp")
+	env := commandEnv("claude", dir)
+	got := map[string]string{}
+	for _, e := range env {
+		k, v, ok := strings.Cut(e, "=")
+		if ok {
+			got[k] = v
+		}
+	}
+	if got["HOME"] != "/keep/this-home" {
+		t.Fatalf("HOME %q", got["HOME"])
+	}
+	if got["TMPDIR"] != filepath.Join(dir, "tmp") || got["TEMP"] != got["TMPDIR"] || got["TMP"] != got["TMPDIR"] {
+		t.Fatalf("temp %#v", got)
+	}
+	if got["npm_config_cache"] != filepath.Join(dir, "cache", "npm") {
+		t.Fatalf("npm %q", got["npm_config_cache"])
+	}
+	if got["PIP_CACHE_DIR"] != filepath.Join(dir, "cache", "pip") {
+		t.Fatalf("pip %q", got["PIP_CACHE_DIR"])
 	}
 }

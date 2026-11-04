@@ -191,6 +191,10 @@ func (r *Runner) environ() []string {
 	return safeEnv()
 }
 
+// BaseEnv is the parent environment passed to claude, codex, and opencode.
+// HOME is included when set. Callers overlay temp and cache paths.
+func BaseEnv() []string { return safeEnv() }
+
 func safeEnv() []string {
 	allow := []string{
 		"PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "TZ",

@@ -23,6 +23,7 @@ import (
 	"github.com/vicgupta/dap/internal/mail"
 	"github.com/vicgupta/dap/internal/model"
 	"github.com/vicgupta/dap/internal/pluginhost"
+	"github.com/vicgupta/dap/internal/rundir"
 	"github.com/vicgupta/dap/internal/secrets"
 	"github.com/vicgupta/dap/internal/store"
 	"github.com/vicgupta/dap/internal/theme"
@@ -97,6 +98,9 @@ func Open(dir string) (*App, error) {
 	if err := os.MkdirAll(abs, 0o700); err != nil {
 		return nil, err
 	}
+	if err := rundir.Ensure(abs); err != nil {
+		return nil, err
+	}
 	lk, err := lockfile.Acquire(filepath.Join(abs, "dap.lock"))
 	if err != nil {
 		return nil, fmt.Errorf("%w (%s)", err, abs)
@@ -115,13 +119,6 @@ func Open(dir string) (*App, error) {
 	if err != nil {
 		_ = lk.Release()
 		return nil, err
-	}
-	// Optional OS keychain. A failure falls back to the file created above
-	// when DAP_SECRETS is not forced to "os" — NewAuto does that itself.
-	if os.Getenv("DAP_SECRETS") != "file" {
-		if auto, err := secrets.NewAuto(abs); err == nil {
-			sec = auto
-		}
 	}
 	box, err := mail.New(abs, sec)
 	if err != nil {
@@ -179,6 +176,9 @@ func InitDataDir(dir string) (FileConfig, error) {
 		return FileConfig{}, err
 	}
 	if err := os.MkdirAll(abs, 0o700); err != nil {
+		return FileConfig{}, err
+	}
+	if err := rundir.Ensure(abs); err != nil {
 		return FileConfig{}, err
 	}
 	return ensureConfig(abs)

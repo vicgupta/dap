@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"os/user"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -46,7 +45,10 @@ func Run(args []string, opt Options) int {
 	if opt.Stderr == nil {
 		opt.Stderr = os.Stderr
 	}
-	data, rest := splitGlobal(args)
+	data, rest, usedDefault := splitGlobal(args)
+	if hint := legacyDataHint(data, usedDefault); hint != "" {
+		fmt.Fprint(opt.Stderr, hint)
+	}
 	if len(rest) == 0 || rest[0] == "help" || rest[0] == "--help" || rest[0] == "-h" {
 		fmt.Fprintln(opt.Stdout, usage)
 		return 0
@@ -133,7 +135,7 @@ const usage = `da — Dashboard Agent Platform
   da tile write         JSON on stdin
   da version            (--version, -V)
 
-Global flag: --data <dir>   (default $DAP_HOME or ~/.dap)
+Global flag: --data <dir>   (default ./.dap in this folder, or $DAP_HOME relative to this folder)
 Every command prints JSON.`
 
 func versionInfo() map[string]any {
@@ -153,8 +155,9 @@ func versionInfo() map[string]any {
 	return info
 }
 
-func splitGlobal(args []string) (string, []string) {
+func splitGlobal(args []string) (string, []string, bool) {
 	data := os.Getenv("DAP_HOME")
+	usedDefault := strings.TrimSpace(data) == ""
 	var rest []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -162,29 +165,58 @@ func splitGlobal(args []string) (string, []string) {
 		case a == "--data" && i+1 < len(args):
 			i++
 			data = args[i]
+			usedDefault = false
 		case strings.HasPrefix(a, "--data="):
 			data = strings.TrimPrefix(a, "--data=")
+			usedDefault = false
 		default:
 			rest = append(rest, a)
 		}
 	}
-	if data == "" {
+	if strings.TrimSpace(data) == "" {
 		data = defaultData()
+		usedDefault = true
 	}
-	return data, rest
+	if abs, err := filepath.Abs(data); err == nil {
+		data = abs
+	}
+	return data, rest, usedDefault
 }
 
 func defaultData() string {
-	home, err := os.UserHomeDir()
+	cwd, err := os.Getwd()
 	if err != nil {
-		if u, err := user.Current(); err == nil {
-			home = u.HomeDir
-		}
+		return ".dap"
 	}
-	if home == "" {
-		home = "."
+	return filepath.Join(cwd, ".dap")
+}
+
+// legacyDataHint reports an old home-directory install without reading or moving it.
+func legacyDataHint(chosen string, usedDefault bool) string {
+	if !usedDefault {
+		return ""
 	}
-	return filepath.Join(home, ".dap")
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	legacy := filepath.Join(home, ".dap")
+	chosenAbs, err := filepath.Abs(chosen)
+	if err != nil {
+		chosenAbs = chosen
+	}
+	legacyAbs, err := filepath.Abs(legacy)
+	if err != nil {
+		legacyAbs = legacy
+	}
+	if filepath.Clean(chosenAbs) == filepath.Clean(legacyAbs) {
+		return ""
+	}
+	st, err := os.Stat(legacy)
+	if err != nil || !st.IsDir() {
+		return ""
+	}
+	return "An older data directory exists at " + legacy + ". DAP is using " + chosenAbs + " in this folder and left the old one in place. Keys saved in the OS keychain by an older version need to be entered again once.\n"
 }
 
 func cmdInit(dir string) (any, error) {
@@ -416,7 +448,7 @@ func cmdPlugin(dir string, args []string, opt Options) (any, error) {
 	}
 	switch args[0] {
 	case "new", "validate", "dev":
-		return cmdPluginLocal(args, opt)
+		return cmdPluginLocal(dir, args, opt)
 	case "list":
 		s, err := openSession(dir, false)
 		if err != nil {
@@ -698,7 +730,7 @@ func readInput(r io.Reader, dest any) (bool, error) {
 	return true, nil
 }
 
-func cmdPluginLocal(args []string, opt Options) (any, error) {
+func cmdPluginLocal(dataDir string, args []string, opt Options) (any, error) {
 	switch args[0] {
 	case "new":
 		optNew := pluginauthor.Options{Lang: "ts", Type: "watcher"}
@@ -748,7 +780,7 @@ func cmdPluginLocal(args []string, opt Options) (any, error) {
 		if len(args) < 2 {
 			return nil, errors.New("usage: da plugin validate <path>")
 		}
-		rep := pluginauthor.Validate(args[1])
+		rep := pluginauthor.ValidateIn(args[1], dataDir)
 		if !rep.OK {
 			write(opt.Stdout, rep)
 			return nil, errors.New("plugin did not pass validation")
@@ -764,7 +796,7 @@ func cmdPluginLocal(args []string, opt Options) (any, error) {
 		if out == nil {
 			out = os.Stdout
 		}
-		if err := pluginauthor.Dev(ctx, args[1], out); err != nil {
+		if err := pluginauthor.Dev(ctx, args[1], dataDir, out); err != nil {
 			return nil, err
 		}
 		return nil, nil

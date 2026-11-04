@@ -12,16 +12,11 @@ import (
 	"time"
 )
 
-// keychain uses the macOS `security` CLI against the login keychain.
-// The secret is passed with -w, which is visible briefly in the process list.
-// Set DAP_SECRETS=file to keep secrets only in the 0600 file instead.
+// keychain used to call the macOS `security` CLI. DAP no longer writes there.
 type keychain struct{}
 
 func newPlatformKeeper() (Keeper, error) {
-	if _, err := exec.LookPath("security"); err != nil {
-		return nil, errors.New("security command is not available")
-	}
-	return keychain{}, nil
+	return nil, errors.New("secrets stay in the data directory")
 }
 
 func (keychain) Backend() string { return "keychain" }

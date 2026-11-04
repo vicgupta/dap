@@ -41,32 +41,28 @@ This archive contains:
   dap       launches the UI (same as: da run)
   plugins/  example plugins (need python3)
 
-Data stays in ~/.dap, or in \$DAP_HOME when that is set.
+Data stays in ./.dap in this folder, or in \$DAP_HOME when that is set (a relative value is resolved from this folder).
 
 install.sh copies da into the current directory, checks SHA256, and does not
 change PATH. From that directory:
 
   ./da run
 
-To install both commands yourself:
+Run both commands from this folder:
 
-  install -m 755 da dap /some/directory/
   ./da run
 
 A .deb is also published (dap_${deb_version}_amd64.deb and the arm64 build).
-It installs /usr/bin/da, /usr/bin/dap, and /usr/share/dap/plugins.
-
-  sudo dpkg -i dap_${deb_version}_amd64.deb
+install.sh does not use it. The install that stays in this folder is ./da.
 
 dap opens the URL in the default browser (xdg-open). Chrome is not required.
 da run --no-browser only prints the URL.
 
-Example plugins:
+Example plugins are in the plugins directory next to this archive:
 
-  da plugin install ~/.local/share/dap/plugins/mail-fake --approve
-  da plugin install ~/.local/share/dap/plugins/inbox-followups --approve
+  ./da plugin install ./plugins/mail-fake --approve
+  ./da plugin install ./plugins/inbox-followups --approve
 
-From the .deb, the plugin directory is /usr/share/dap/plugins.
 Gmail and Outlook need an OAuth client id. The demo mailbox does not.
 EOF
 

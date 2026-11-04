@@ -23,7 +23,7 @@ Nothing sends unless a person approves a card. Gmail and Outlook are the same ki
 
 `inbox-followups` config: `wait_hours` (default 24), `signature` (default `Vic`), `skip_domains` (comma-separated domains that never get a draft), and `preview_rule`.
 
-Open **Connections**. Save a Composio API key, then **Connect Gmail** and **Connect Outlook**. Sign-in happens in the browser. The demo mailbox still connects with one click and does not use Composio. The API key and connection ids are stored with the secret keeper under service `dap.composio` (OS keychain, or `secrets.json` mode `0600` when the keychain does not answer). Disconnect revokes that toolkit's connection and keeps the API key.
+Open **Connections**. Save a Composio API key, then **Connect Gmail** and **Connect Outlook**. Sign-in happens in the browser. The demo mailbox still connects with one click and does not use Composio. The API key and connection ids are stored in `./.dap/secrets.json` under service `dap.composio` (mode `0600`). Disconnect revokes that toolkit's connection and keeps the API key.
 
 `mail.send` still requires an approved card whose effects include `sends`. A draft created while proposing is not a send. The approved card body is what goes out.
 

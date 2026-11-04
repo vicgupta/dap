@@ -133,19 +133,9 @@ Kinds the core writes today:
 
 `secrets.Keeper` is `Set`, `Get`, and `Delete` by service and account. Plugin HTTP uses service `dap.plugin.<plugin-name>`, so one plugin cannot read another's account names. The Composio API key is service `dap.composio`, account `api_key`. Each toolkit's connection id is service `dap.composio`, account `conn.<toolkit>`. Direct Gmail and Microsoft Graph tokens, when those paths are selected, stay in service `dap.mail`. None of these values are returned on the plugin API, written to the ledger, or written to `mail/public.json`.
 
-`Open` builds the store like this:
+`Open` writes `secrets.json` (mode `0600`) in the data directory. The backend name is `file`. DAP does not write the OS keychain, Credential Manager, or Secret Service. `DAP_SECRETS` does not select another store.
 
-- `DAP_SECRETS=file`: `secrets.json` only.
-- `DAP_SECRETS=os`: the OS store, or an error if it cannot be probed.
-- Unset or `auto`: probe the OS store (write and delete `dap.probe` / `probe`). On failure, use the file.
-
-| OS | Backend name | Mechanism |
-| --- | --- | --- |
-| macOS | `keychain` | `security add-generic-password` / `find-generic-password` / `delete-generic-password`. The secret is passed with `-w`, so it is on that process's argv until the command exits. |
-| Windows | `credential-manager` | `CredWriteW`, `CredReadW`, `CredDeleteW` for a generic credential `DAP:<service>:<account>`. |
-| Linux | `secret-service` | `secret-tool` store, lookup, and clear. Each call times out after 3 seconds. |
-
-The file is `secrets.json`, mode `0600`, in the data directory. Doctor reports the backend name and does not fail on `file`.
+Doctor reports the backend name and does not fail on `file`.
 
 `POST /secret/get` returns the secret to that plugin only after `secrets.read` is declared and the decision is `allowed`. `set` and `delete` require `secrets.write`. An ask-first mode without an approved card is denied. The example plugins do not declare these permissions.
 
@@ -206,7 +196,7 @@ Mode `0700` on the directory. JSON state files are mode `0600`.
 go test ./...
 ```
 
-`make test` is the same. Browser end-to-end tests live in `e2e/` and run the UI in Chromium, Firefox, and WebKit (`cd e2e && npm test`). The Go tests do not need a display, a keychain, or a network. They use the file secret store, temporary data directories, and the Python example plugins (so Python 3 has to be on `PATH` for `internal/core` and `internal/pluginhost`).
+`make test` is the same. Browser end-to-end tests live in `e2e/` and run the UI in Chromium, Firefox, and WebKit (`cd e2e && npm test`). The Go tests do not need a display or a network. They use the file secret store, temporary data directories, and the Python example plugins (so Python 3 has to be on `PATH` for `internal/core` and `internal/pluginhost`).
 
 What they cover:
 
@@ -227,7 +217,7 @@ What they cover:
 - The window is the default browser, not a native webview and not a private Chrome profile. Closing that tab does not stop `da`. Quit, `da quit`, and Ctrl+C do. The Quit page says DAP has quit and asks the tab to close. `da run --no-browser` only prints the URL.
 - The admin token is in the HTML of the loopback page and in `run.json`. That is the whole of admin authentication.
 - Plugin UI isolation is a separate loopback origin, a bearer token, and Content-Security-Policy. It is not an OS sandbox.
-- macOS keychain writes pass the secret on `security`'s argv. Use `DAP_SECRETS=file` if that matters. Linux `secret-tool` can block on a keyring prompt until the 3 second timeout, and then the file backend is used.
+- Secrets stay in `./.dap/secrets.json`. Claude Code, Codex, and OpenCode keep their own logins. DAP does not move those files. Child processes get `TMPDIR`, `TEMP`, `TMP`, `npm_config_cache`, and `PIP_CACHE_DIR` inside `./.dap`. HOME for those CLIs is left as it was.
 - Semver in manifests has no pre-release or build metadata.
 - `every` cannot express days. Cron has no seconds field and no descriptors such as `@daily`.
 - Chat launches Claude Code (`claude -p`) and Codex (`codex exec`) only. OpenCode is detected and not launched. The CLI working directory is a per-session folder, not the data directory. See [chat.md](chat.md).

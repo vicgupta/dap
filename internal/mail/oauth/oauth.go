@@ -31,7 +31,7 @@ type Config struct {
 	Open func(authURL string) error
 }
 
-// Token is what the provider returned. Callers store it in the keychain.
+// Token is what the provider returned. Callers store it in the data directory.
 type Token struct {
 	AccessToken  string
 	RefreshToken string

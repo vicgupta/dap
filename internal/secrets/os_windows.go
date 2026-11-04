@@ -10,14 +10,11 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// credMan uses the Windows Credential Manager (CredWrite / CredRead / CredDelete).
+// credMan used to call Credential Manager. DAP no longer writes there.
 type credMan struct{}
 
 func newPlatformKeeper() (Keeper, error) {
-	if err := procCredWrite.Find(); err != nil {
-		return nil, errors.New("Credential Manager is not available")
-	}
-	return credMan{}, nil
+	return nil, errors.New("secrets stay in the data directory")
 }
 
 func (credMan) Backend() string { return "credential-manager" }

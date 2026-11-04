@@ -1,6 +1,6 @@
 // Package secrets stores tokens for later plugins.
-// The Keeper interface is implemented by the OS keychain when it answers,
-// and by a mode-0600 file when it does not.
+// Secrets live in a mode-0600 file in the data directory. DAP does not write
+// the OS keychain, Credential Manager, or Secret Service.
 package secrets
 
 import (
@@ -38,6 +38,9 @@ func NewFile(dir string) (Keeper, error) {
 		if err := os.WriteFile(path, []byte("{}\n"), 0o600); err != nil {
 			return nil, err
 		}
+	}
+	if err := tightenSecret(path); err != nil {
+		return nil, err
 	}
 	return &fileKeeper{path: path}, nil
 }
@@ -106,35 +109,17 @@ func (f *fileKeeper) write(m map[string]string) error {
 	if err := os.WriteFile(tmp, append(b, '\n'), 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, f.path)
+	if err := tightenSecret(tmp); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, f.path); err != nil {
+		return err
+	}
+	return tightenSecret(f.path)
 }
 
-// NewAuto prefers the OS keychain when DAP_SECRETS is "os" or "auto" and the
-// platform tool answers a probe. Otherwise it uses the file backend.
-// DAP_SECRETS=file forces the file. Tests should call NewFile directly.
+// NewAuto stores secrets in the data directory. DAP_SECRETS is ignored so a
+// process cannot be pointed at the OS keychain.
 func NewAuto(dir string) (Keeper, error) {
-	mode := os.Getenv("DAP_SECRETS")
-	if mode == "" {
-		mode = "auto"
-	}
-	if mode == "file" {
-		return NewFile(dir)
-	}
-	osKeeper, err := newPlatformKeeper()
-	if err != nil {
-		if mode == "os" {
-			return nil, err
-		}
-		return NewFile(dir)
-	}
-	const probeService = "dap.probe"
-	const probeAccount = "probe"
-	if err := osKeeper.Set(probeService, probeAccount, "ok"); err != nil {
-		if mode == "os" {
-			return nil, err
-		}
-		return NewFile(dir)
-	}
-	_ = osKeeper.Delete(probeService, probeAccount)
-	return osKeeper, nil
+	return NewFile(dir)
 }

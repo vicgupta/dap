@@ -49,8 +49,7 @@ type Info struct {
 	Hint  string `json:"hint"`
 }
 
-// LookPath is replaced in tests. The default also searches Homebrew, nvm,
-// Volta, and ~/.local/bin so a macOS app launched outside a shell can find claude and node.
+// LookPath is replaced in tests. The default is the process PATH.
 var LookPath = lookAugmented
 
 // Detect reports which agent CLIs are on PATH.
@@ -83,10 +82,11 @@ func Find(id string) (Spec, string, error) {
 
 // Request is one headless agent run.
 type Request struct {
-	Agent  string
-	Dir    string
-	Prompt string
-	OnLine func(string)
+	Agent   string
+	Dir     string
+	DataDir string
+	Prompt  string
+	OnLine  func(string)
 }
 
 // Run starts the agent and streams combined output. Cancel kills the process.
@@ -98,7 +98,7 @@ func Run(ctx context.Context, req Request) error {
 	args := append(append([]string{}, spec.Args...), req.Prompt)
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = req.Dir
-	cmd.Env = commandEnv(req.Agent)
+	cmd.Env = commandEnv(req.Agent, req.DataDir)
 	setProcGroup(cmd)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

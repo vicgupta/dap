@@ -6,7 +6,7 @@ Open it from **Chat** in the sidebar, or press **Ctrl+Shift+.** (Command+Shift+.
 
 ## What a turn does
 
-Each turn starts a new process and waits for it to exit. The working directory is `~/.dap/chat/work/<session>/` (or `$DAP_HOME/chat/work/<session>/`), not the data directory. That keeps the process away from `run.json`, `secrets.json`, and the ledger.
+Each turn starts a new process and waits for it to exit. The working directory is `./.dap/chat/work/<session>/` (or `$DAP_HOME/chat/work/<session>/`). That subdirectory keeps the process away from `run.json`, `secrets.json`, and the ledger. Temporary files for the process are under `./.dap/tmp`.
 
 The process is read-only:
 
@@ -41,13 +41,13 @@ The picker lists Claude Code and Codex only. DAP checks `claude` / `codex` on `P
 - `claude auth status` (exit 0 means signed in)
 - `codex login status` (exit 0 means signed in)
 
-The reply is a yes or no. DAP does not open `~/.claude` credential files or `~/.codex/auth.json`. If the CLI is missing or signed out, the panel shows the command to run in a terminal (`claude auth login` or `codex login`) and disables Send.
+The reply is a yes or no. DAP does not open Claude Code or Codex credential files. Those CLIs keep their own logins, and DAP does not move them. If the CLI is missing or signed out, the panel shows the command to run in a terminal (`claude auth login` or `codex login`) and disables Send.
 
 The choice is stored in `config.json` as `"chat": {"provider": "claude-code"}` or `"codex"`. `PUT /api/settings` with only `chat` leaves `theme` and `layout` alone. A body with only `theme` or only `layout` leaves `chat` alone.
 
 ## History
 
-Sessions live in `~/.dap/chat/sessions/<id>.json` (mode `0600`). **New chat** starts an empty one. Opening a past row resumes that CLI session. The ledger records `chat.session` when a chat starts, `chat.turn` when a turn finishes, and `chat.cancel` when you stop one. The row is a short summary (provider and the first line of what you asked). The transcript stays in the session file, not the ledger.
+Sessions live in `./.dap/chat/sessions/<id>.json` (mode `0600`). **New chat** starts an empty one. Opening a past row resumes that CLI session. The ledger records `chat.session` when a chat starts, `chat.turn` when a turn finishes, and `chat.cancel` when you stop one. The row is a short summary (provider and the first line of what you asked). The transcript stays in the session file, not the ledger.
 
 Quit, `da quit`, and Ctrl+C kill the running CLI through the same shutdown path that stops plugins. A turn also stops itself after 10 minutes.
 
