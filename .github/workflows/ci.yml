@@ -19,6 +19,15 @@ jobs:
       - name: Go tests
         run: go test ./...
 
+      - name: Installer tests
+        run: scripts/install_test.sh
+
+      - name: Release asset tests
+        run: packaging/cli_assets_test.sh
+
+      - name: Linux package test
+        run: packaging/linux/package_test.sh
+
   e2e:
     runs-on: ubuntu-latest
     steps:

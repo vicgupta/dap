@@ -1,5 +1,7 @@
 #!/bin/sh
 # Open the DAP window. Same as `da run`.
-# Keep this script next to the `da` binary. Data stays in $DAP_HOME or ~/.dap.
+# Not a release asset. Releases ship the da binary only.
+# Keep this script next to the `da` binary if you use it locally.
+# Data stays in ./.dap in the working directory, or in $DAP_HOME when that is set.
 dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 exec "$dir/da" run

@@ -2,7 +2,7 @@
 
 v0.1.0-alpha.1 is a private GitHub pre-release built from `main` `546a2e1`. That tag is macOS only: Apple Silicon, Intel, and a universal binary, ad-hoc signed and not notarized. It does not include Linux or Windows packages, and this repo does not replace that tag.
 
-The release workflow on this branch, once it is on `main`, builds macOS, Linux, and Windows for a later `v*` tag. Themes (PR #4) and the plugin creator (PR #5) are not in v0.1.0-alpha.1.
+The release workflow on `main` builds macOS, Linux, and Windows CLI binaries for a `v*` tag. Each archive contains only `da` (`da.exe` on Windows). It does not publish `DAP.app`, `.deb` packages, or launcher and plugins bundles. Themes (PR #4) and the plugin creator (PR #5) are not in v0.1.0-alpha.1.
 
 Downloads are public HTTPS. `install.sh` and `install.ps1` ask `https://api.github.com/repos/vicgupta/dap/releases?per_page=1` for the newest release, including pre-releases, then download that tag from `https://github.com/vicgupta/dap/releases/download/<tag>/`. They do not use the `gh` CLI. `/releases/latest/download/` skips pre-releases, so the scripts do not use it. If the API does not answer, they fall back to `v0.1.0-alpha.4`. `DAP_TAG` overrides both. They copy `da` into the current folder, check SHA256, and keep data in `./.dap` in that folder.
 
@@ -72,25 +72,26 @@ powershell -ExecutionPolicy Bypass -Scope Process -File .\install.ps1
 
 `-Scope Process` changes execution policy only for that PowerShell process. Data stays in `./.dap` in that folder. A relative `$DAP_HOME` is resolved from the folder. The scripts do not change `PATH`.
 
-v0.1.0-alpha.4 ships the macOS `da` tarballs and Windows `da.exe` zips (`da-<version>-windows-amd64.zip` and `da-<version>-windows-arm64.zip`, each containing only `da.exe`). It does not ship Linux archives or `DAP.app`.
+v0.1.0-alpha.4 is the installer fallback when the GitHub releases API does not answer. Published tags through v0.1.0-alpha.5 ship macOS `da` tarballs and Windows `da.exe` zips (`da-<version>-windows-amd64.zip` and `da-<version>-windows-arm64.zip`, each containing only `da.exe`). They do not ship Linux archives. On Linux, `install.sh` stops if the selected release has no `da-<version>-linux-<arch>.tar.gz` asset. Set `DAP_TAG` to a release that includes those files. The next tag built by this workflow publishes the Linux tarballs below.
 
-## Later tags: Linux and Windows
+## Release assets
 
-`packaging/release.sh` and `.github/workflows/release.yml` add these archives next to the macOS files. `checksums.txt` covers every file. Pre-release tags (`-alpha`, `-beta`, `-rc`) stay marked pre-release.
+`packaging/release.sh` and `.github/workflows/release.yml` publish this set and nothing else. `checksums.txt` covers every file. Pre-release tags (`-alpha`, `-beta`, `-rc`) stay marked pre-release.
 
 | Asset | What it is |
 | --- | --- |
-| `da-<version>-linux-amd64.tar.gz` | `da`, the `dap` launcher, and `plugins/` |
-| `da-<version>-linux-arm64.tar.gz` | Same for arm64 |
-| `dap_<debver>_amd64.deb` | `/usr/bin/da`, `/usr/bin/dap`, `/usr/share/dap/plugins` |
-| `dap_<debver>_arm64.deb` | Same for arm64 |
+| `da-<version>-darwin-arm64.tar.gz` | Apple Silicon `da` |
+| `da-<version>-darwin-amd64.tar.gz` | Intel `da` |
+| `da-<version>-darwin-universal.tar.gz` | Fat `da` |
+| `da-<version>-linux-amd64.tar.gz` | Linux x86_64 `da` |
+| `da-<version>-linux-arm64.tar.gz` | Linux arm64 `da` |
 | `da-<version>-windows-amd64.zip` | `da.exe` only |
 | `da-<version>-windows-arm64.zip` | `da.exe` only |
-| `DAP-<version>-windows-amd64.zip` | `da.exe`, `DAP.cmd`, and `plugins\` |
+| `checksums.txt` | SHA256 |
 | `install.sh` | macOS and Linux CLI, into the current directory |
 | `install.ps1` | Windows CLI, into the current directory |
 
-`<version>` is the tag without `v`. `<debver>` is the same string with the first hyphen replaced by `~`, so `0.1.0-alpha.2` becomes `0.1.0~alpha.2`. There is no AppImage.
+`<version>` is the tag without `v`. Each archive contains only that one binary. There is no `DAP.app`, no `.deb`, and no AppImage.
 
 ### Linux
 
@@ -100,11 +101,9 @@ sh install.sh
 ./da run
 ```
 
-On Linux, `install.sh` copies `da` into the current directory. It does not change `PATH`. Run `./da run` from that directory. Data stays in `./.dap`. The archive also contains `dap` and `plugins/` if you want to copy those yourself, still inside this folder. `dap` runs `da run`, and both commands have to stay in the same directory.
+On Linux, `install.sh` copies `da` into the current directory. It does not change `PATH` and does not use sudo. `uname -m` maps `x86_64` to amd64 and `aarch64` or `arm64` to arm64. SHA256 is checked with `sha256sum` (macOS uses `shasum`). Run `./da run` from that directory. Data stays in `./.dap`.
 
-The `.deb` packages are built for a system install. `install.sh` does not use them. The install that stays in this folder is the script above.
-
-`dap` opens the URL in the default browser (`xdg-open` on Linux). Chrome is not required. `--no-browser` only prints the URL.
+`da run` opens the URL in the default browser (`xdg-open`). Chrome is not required. On a machine with no desktop or browser (a server, or WSL without a browser), run `./da run --no-browser` and open http://127.0.0.1:7391.
 
 ### Windows
 
@@ -142,7 +141,7 @@ Example plugins need Python (`python3` on macOS and Linux; `python` or `py` on W
 ./da run
 ```
 
-The CLI installer does not copy example plugins. Use a checkout of this repo, the plugins inside a macOS app zip, or the `plugins/` directory from a Linux archive. Gmail and Outlook connect through Composio: save the API key on Connections, then press Connect. The steps are in [composio.md](composio.md). The demo mailbox (`mail-fake`) does not need a key. Nothing sends until you approve a card. Direct Microsoft Graph, and legacy direct Gmail, are documented in [inbox-followups.md](inbox-followups.md).
+The CLI installer does not copy example plugins. Use a checkout of this repo. Gmail and Outlook connect through Composio: save the API key on Connections, then press Connect. The steps are in [composio.md](composio.md). The demo mailbox (`mail-fake`) does not need a key. Nothing sends until you approve a card. Direct Microsoft Graph, and legacy direct Gmail, are documented in [inbox-followups.md](inbox-followups.md).
 
 ## Version string
 
@@ -160,13 +159,13 @@ Two `da` processes cannot use the same data directory at once.
 
 Pushing a `v*` tag runs `.github/workflows/release.yml` once that workflow is on the default branch. The tag `v0.1.0-alpha.1` points at `546a2e1`, which does not contain the workflow, so Actions does not rebuild that release.
 
-The workflow cross-compiles on `ubuntu-latest`:
+The workflow cross-compiles on `ubuntu-latest` and uploads CLI binaries only:
 
-- macOS arm64, amd64, and a universal binary (`lipo`), ad-hoc signed with `rcodesign` (signature flag `ADHOC`, same outcome as `codesign -s -`)
-- Linux amd64 and arm64 tarballs, plus `.deb` packages
-- a Windows amd64 zip with `da.exe` and `DAP.cmd`
+- macOS arm64, amd64, and a universal `da` tarball (`lipo`), ad-hoc signed with `rcodesign` (signature flag `ADHOC`, same outcome as `codesign -s -`)
+- Linux amd64 and arm64 `da` tarballs (`CGO_ENABLED=0`), each containing only `da`
+- Windows amd64 and arm64 zips that contain only `da.exe`
 
-Tags that contain `-alpha`, `-beta`, or `-rc` are marked pre-release. Nothing is notarized.
+Tags that contain `-alpha`, `-beta`, or `-rc` are marked pre-release. Nothing is notarized. `DAP.app`, `.deb` packages, and launcher or plugins bundles are not uploaded.
 
 Local equivalent, without uploading:
 
@@ -174,7 +173,7 @@ Local equivalent, without uploading:
 packaging/release.sh v0.1.0-alpha.2
 ```
 
-Artifacts land in `dist/release/`. On a Mac the macOS step uses `lipo` and `codesign -s -` when those tools are on `PATH`. The `.deb` step needs `dpkg-deb`.
+Artifacts land in `dist/release/`. On a Mac the macOS step uses `lipo` and `codesign -s -` when those tools are on `PATH`.
 
 To publish from a checkout that already has the artifacts:
 

@@ -24,9 +24,19 @@ if [ ! -d "$out" ] || [ ! -f "$notes" ]; then
   exit 1
 fi
 
+# shellcheck source=packaging/cli_assets.sh
+source "$root/packaging/cli_assets.sh"
+cli_release_assert_clean "$out"
+cli_release_require "$out" checksums
+assets=()
+while IFS= read -r asset; do
+  [ -n "$asset" ] || continue
+  assets+=("$asset")
+done < <(cli_release_list "$out")
+
 cd "$root"
 if gh release view "$tag" >/dev/null 2>&1; then
-  gh release upload "$tag" "$out"/* --clobber
+  gh release upload "$tag" "${assets[@]}" --clobber
   exit 0
 fi
 
@@ -34,4 +44,4 @@ args=(--title "$tag" --notes-file "$notes")
 case "$tag" in
   *-alpha*|*-beta*|*-rc*) args+=(--prerelease) ;;
 esac
-gh release create "$tag" "${args[@]}" "$out"/*
+gh release create "$tag" "${args[@]}" "${assets[@]}"
