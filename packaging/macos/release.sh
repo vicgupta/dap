@@ -5,8 +5,8 @@
 #
 # Usage: packaging/macos/release.sh v0.1.0-alpha.1
 # The all-platform entry point is packaging/release.sh. When
-# DAP_RELEASE_APPEND=1, this script only adds macOS files and leaves
-# checksums and installers to the caller.
+# DAP_RELEASE_APPEND=1, this script only adds macOS CLI tarballs (no
+# DAP.app zip) and leaves checksums and installers to the caller.
 set -euo pipefail
 
 root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
@@ -72,11 +72,17 @@ mkdir -p "$work/bin" "$out"
 echo "Building da ${version} (${commit})"
 CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "$ldflags" -o "$work/bin/da-arm64" ./cmd/da
 CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags "$ldflags" -o "$work/bin/da-amd64" ./cmd/da
+"$lipo_bin" -create -output "$work/bin/da-universal" "$work/bin/da-arm64" "$work/bin/da-amd64"
+"$lipo_bin" -info "$work/bin/da-universal"
+
+# DAP.app is not a release asset. The combined release sets DAP_RELEASE_APPEND=1
+# and publishes the da tarballs only. A direct run of this script still builds
+# the app zip for local use.
+if [ "${DAP_RELEASE_APPEND:-}" != 1 ]; then
 CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o "$work/bin/DAP-arm64" ./packaging/macos/launcher
 CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o "$work/bin/DAP-amd64" ./packaging/macos/launcher
-"$lipo_bin" -create -output "$work/bin/da-universal" "$work/bin/da-arm64" "$work/bin/da-amd64"
 "$lipo_bin" -create -output "$work/bin/DAP-universal" "$work/bin/DAP-arm64" "$work/bin/DAP-amd64"
-"$lipo_bin" -info "$work/bin/da-universal" "$work/bin/DAP-universal"
+"$lipo_bin" -info "$work/bin/DAP-universal"
 
 go run ./packaging/macos/icns "$work/AppIcon.icns"
 
@@ -183,6 +189,7 @@ assemble() {
 assemble arm64 "$work/bin/da-arm64" "$work/bin/DAP-arm64"
 assemble amd64 "$work/bin/da-amd64" "$work/bin/DAP-amd64"
 assemble universal "$work/bin/da-universal" "$work/bin/DAP-universal"
+fi
 
 for arch in arm64 amd64 universal; do
   src="$work/bin/da-${arch}"

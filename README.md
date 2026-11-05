@@ -2,13 +2,15 @@
 
 The installer drops `da` into the folder you run it from. No admin rights and no PATH changes.
 
-macOS (Terminal):
+macOS and Linux (Terminal):
 
 ```bash
 curl -fsSL -o install.sh https://raw.githubusercontent.com/vicgupta/dap/main/scripts/install.sh
 sh install.sh
 ./da run
 ```
+
+On Linux, if there's no desktop or browser (servers, WSL without a browser), run `./da run --no-browser` and open http://127.0.0.1:7391.
 
 Windows (PowerShell):
 

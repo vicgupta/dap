@@ -42,6 +42,11 @@ awk -v tag="$tag" '
   { print }
 ' "$root/scripts/install.ps1" > "$out/install.ps1"
 
+# shellcheck source=packaging/cli_assets.sh
+source "$root/packaging/cli_assets.sh"
+cli_release_prune "$out"
+cli_release_require "$out"
+
 (
   cd "$out"
   for name in *; do
@@ -67,6 +72,8 @@ sh install.sh
 ./da run
 \`\`\`
 
+On Linux, if there's no desktop or browser, run \`./da run --no-browser\` and open http://127.0.0.1:7391.
+
 Windows (PowerShell):
 
 \`\`\`powershell
@@ -77,11 +84,13 @@ powershell -ExecutionPolicy Bypass -Scope Process -File .\\install.ps1
 
 The installers check SHA256 and copy \`da\` or \`da.exe\` into the current directory. They do not change PATH and do not need sudo or an administrator prompt. Data stays in ./.dap in that folder. A relative \$DAP_HOME is resolved from the folder.
 
-macOS Gatekeeper: right-click DAP.app > Open, or System Settings > Privacy & Security > Open Anyway, or \`xattr -dr com.apple.quarantine DAP.app\`.
+This release is the CLI only: darwin tarballs, linux amd64 and arm64 tarballs, windows zips, \`checksums.txt\`, \`install.sh\`, and \`install.ps1\`. Each archive contains only \`da\` (\`da.exe\` on Windows).
+
+macOS Gatekeeper: \`install.sh\` clears the quarantine flag on \`da\`.
 
 Windows SmartScreen: More info > Run anyway. \`install.ps1\` also unblocks the installed copy.
 
-da run opens the URL in the default browser (\`open\` on macOS, \`rundll32 url.dll,FileProtocolHandler\` on Windows, \`xdg-open\` on Linux). Chrome is not required. Example plugins need Python 3. Gmail and Outlook need an OAuth client id. See docs/release.md.
+da run opens the URL in the default browser (\`open\` on macOS, \`xdg-open\` on Linux, \`rundll32 url.dll,FileProtocolHandler\` on Windows). Chrome is not required. Example plugins need Python 3. Gmail and Outlook need an OAuth client id. See docs/release.md.
 EOF
 
 echo "Artifacts in ${out}"
