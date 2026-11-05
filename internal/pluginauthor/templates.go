@@ -163,8 +163,10 @@ func CopyTemplate(id, dst string) error {
 	if err != nil {
 		return err
 	}
-	if err := copySDK(filepath.Join(abs, "vendor", "plugin-sdk")); err != nil {
-		return err
+	if _, err := os.Stat(filepath.Join(abs, "package.json")); err == nil {
+		if err := copySDK(filepath.Join(abs, "vendor", "plugin-sdk")); err != nil {
+			return err
+		}
 	}
 	dist := filepath.Join(abs, "dist", "index.js")
 	if _, err := os.Stat(dist); err == nil {

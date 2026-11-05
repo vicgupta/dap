@@ -17,7 +17,8 @@ import (
 	"github.com/vicgupta/dap/internal/rundir"
 )
 
-// Host supervises plugin processes. Each plugin is one process.
+// Host supervises plugins. A code plugin is one process.
+// A declarative plugin is an in-process handler registered with StartLocal.
 type Host struct {
 	mu      sync.Mutex
 	plugins map[string]*proc
@@ -37,6 +38,10 @@ type Options struct {
 	DataDir string
 }
 
+// LocalFunc handles one JSON-RPC method inside the process.
+// params is the raw params object. A non-nil error is a JSON-RPC error.
+type LocalFunc func(ctx context.Context, method string, params json.RawMessage) (any, error)
+
 type proc struct {
 	name    string
 	argv    []string
@@ -44,6 +49,7 @@ type proc struct {
 	env     []string
 	cmd     *exec.Cmd
 	stdin   io.WriteCloser
+	local   LocalFunc
 	mu      sync.Mutex
 	writeMu sync.Mutex
 	nextID  int
@@ -147,6 +153,33 @@ func (h *Host) Start(opts Options) error {
 	return nil
 }
 
+// StartLocal registers an in-process plugin. Stop removes it.
+// Declarative plugins use this so they have no subprocess.
+func (h *Host) StartLocal(name string, fn LocalFunc) error {
+	if fn == nil {
+		return errors.New("plugin has no handler")
+	}
+	h.mu.Lock()
+	if old, ok := h.plugins[name]; ok {
+		h.mu.Unlock()
+		old.stop()
+		h.mu.Lock()
+	}
+	h.mu.Unlock()
+	p := &proc{
+		name:    name,
+		local:   fn,
+		pending: map[int]chan rpcResponse{},
+		exited:  make(chan struct{}),
+		stderr:  &tail{},
+		iface:   "dap.plugin.v1",
+	}
+	h.mu.Lock()
+	h.plugins[name] = p
+	h.mu.Unlock()
+	return nil
+}
+
 func (p *proc) finish() {
 	p.done.Do(func() {
 		close(p.exited)
@@ -194,6 +227,9 @@ func (h *Host) Call(ctx context.Context, name, method string, params any, out an
 }
 
 func (p *proc) call(ctx context.Context, method string, params any, out any) error {
+	if p.local != nil {
+		return p.callLocal(ctx, method, params, out)
+	}
 	p.writeMu.Lock()
 	defer p.writeMu.Unlock()
 	p.mu.Lock()
@@ -238,6 +274,39 @@ func (p *proc) call(ctx context.Context, method string, params any, out any) err
 	}
 }
 
+func (p *proc) callLocal(ctx context.Context, method string, params any, out any) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	select {
+	case <-p.exited:
+		return fmt.Errorf("plugin %s exited", p.name)
+	default:
+	}
+	raw, err := json.Marshal(params)
+	if err != nil {
+		return err
+	}
+	result, err := p.local(ctx, method, raw)
+	if err != nil {
+		return err
+	}
+	if out == nil || result == nil {
+		return nil
+	}
+	b, err := json.Marshal(result)
+	if err != nil {
+		return err
+	}
+	if len(b) == 0 || string(b) == "null" {
+		return nil
+	}
+	if err := json.Unmarshal(b, out); err != nil {
+		return fmt.Errorf("decode %s result: %w", method, err)
+	}
+	return nil
+}
+
 // Stop terminates one plugin.
 func (h *Host) Stop(name string) {
 	h.mu.Lock()
@@ -273,6 +342,10 @@ func (h *Host) StopAll() {
 }
 
 func (p *proc) stop() {
+	if p.local != nil {
+		p.finish()
+		return
+	}
 	_ = p.stdin.Close()
 	termProc(p.cmd)
 	select {
@@ -288,7 +361,18 @@ func (h *Host) Running(name string) bool {
 	h.mu.Lock()
 	p := h.plugins[name]
 	h.mu.Unlock()
-	if p == nil || p.cmd.Process == nil {
+	if p == nil {
+		return false
+	}
+	if p.local != nil {
+		select {
+		case <-p.exited:
+			return false
+		default:
+			return true
+		}
+	}
+	if p.cmd == nil || p.cmd.Process == nil {
 		return false
 	}
 	select {

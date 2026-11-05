@@ -156,7 +156,16 @@ func TestAutoInstallSuccess(t *testing.T) {
 	if plug == nil {
 		t.Fatal("not installed")
 	}
-	if plug.Config["provider"] != "gmail" {
+	switch n := plug.Config["top"].(type) {
+	case int:
+		if n != 5 {
+			t.Fatalf("config %+v", plug.Config)
+		}
+	case float64:
+		if n != 5 {
+			t.Fatalf("config %+v", plug.Config)
+		}
+	default:
 		t.Fatalf("config %+v", plug.Config)
 	}
 	rows := ledgerKinds(t, app)
@@ -220,23 +229,33 @@ func TestInstallTemplatesSkipAgent(t *testing.T) {
 		if app.store.Snapshot().Plugins[tmpl.ID] == nil {
 			t.Fatalf("%s not installed", tmpl.ID)
 		}
+		if tmpl.ID == "inbox-triage" && (job.Card == nil || !strings.Contains(job.Card.Body, "Sample run") || !strings.Contains(job.Card.Body, "mail.read")) {
+			t.Fatalf("install card %+v", job.Card)
+		}
 	}
 	if n < 4 {
 		t.Fatalf("install templates: %d", n)
 	}
 }
 
-func TestCustomizeRunsAgent(t *testing.T) {
-	app := openWithAgent(t, "#!/bin/sh\necho customizing\nexit 0\n")
-	job := waitJob(t, app, CreateRequest{Template: "follow-up-nudger", Agent: "claude", AutoInstall: true})
-	if job.Status != createFailed || !strings.Contains(job.Error, "starter") {
+func TestDeclarativeTemplateInstallsWithoutAgent(t *testing.T) {
+	app, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = app.Close() })
+	orig := agentrun.LookPath
+	agentrun.LookPath = func(name string) (string, error) {
+		t.Fatalf("agent lookup for %s", name)
+		return "", os.ErrNotExist
+	}
+	t.Cleanup(func() { agentrun.LookPath = orig })
+	job := waitJob(t, app, CreateRequest{Template: "follow-up-nudger", AutoInstall: true})
+	if job.Status != createInstalled || job.Card == nil {
 		t.Fatalf("%+v", job)
 	}
-	if !strings.Contains(job.Log, "customizing") {
-		t.Fatalf("%+v", job)
-	}
-	if app.store.Snapshot().Plugins["follow-up-nudger"] != nil {
-		t.Fatal("customize installed without a change")
+	if !strings.Contains(job.Card.Body, "Sample run") || !strings.Contains(job.Card.Body, "mail.draft") {
+		t.Fatalf("body %s", job.Card.Body)
 	}
 }
 

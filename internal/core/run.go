@@ -323,6 +323,10 @@ func (a *App) accept(plugin string, draft model.CardDraft, actor string, auto bo
 	})
 	// Change cards always wait for a person, even when the permission is allowed.
 	// Safe plugin actions that the manifest marks allowed can run inside this same cycle.
+	// A declarative plugin never auto-acts. Every card waits for a person.
+	if rec.Manifest.Runtime == "declarative" {
+		auto = false
+	}
 	if auto && actor == model.ActorPlugin && card.Kind == model.KindAction && res.Decision == model.ModeAllowed && !guardrails.Sensitive(effects) {
 		done, err := a.finishApproved(card.ID)
 		if err != nil {

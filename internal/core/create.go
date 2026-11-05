@@ -6,8 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/vicgupta/dap/internal/declarative"
 	"github.com/vicgupta/dap/internal/id"
 	"github.com/vicgupta/dap/internal/ledger"
+	"github.com/vicgupta/dap/internal/mail"
 	"github.com/vicgupta/dap/internal/manifest"
 	"github.com/vicgupta/dap/internal/model"
 	"github.com/vicgupta/dap/internal/permissions"
@@ -35,6 +37,14 @@ func (a *App) preparePluginChange(dir string, settings map[string]any) (model.Ca
 		reload = true
 	}
 	body := pluginChangeBody(m)
+	if m.Declarative != nil {
+		_, text, err := declarative.Sample(*m.Declarative, settings, a.now(), mail.Seed(a.now()))
+		if err != nil {
+			body += "\nSample run failed: " + err.Error() + "\n"
+		} else if text != "" {
+			body += "\n" + text
+		}
+	}
 	title := "Install " + m.Name
 	summary := m.Description
 	if reload {

@@ -17,6 +17,7 @@ type Message struct {
 	Snippet   string
 	At        time.Time
 	FromMe    bool
+	Labels    []string
 }
 
 // Messages reads a Composio tool payload. fromMeHint marks a sent-folder page.
@@ -47,7 +48,7 @@ func Messages(raw json.RawMessage, me string, fromMeHint bool) []Message {
 		msgs = append(msgs, Message{
 			ID: id, ThreadID: thread, Subject: str(row, "subject"),
 			FromName: fromName, FromEmail: fromEmail, ToEmail: toEmail,
-			Snippet: snippet, At: at, FromMe: fromMe,
+			Snippet: snippet, At: at, FromMe: fromMe, Labels: labels(row),
 		})
 	}
 	return msgs

@@ -15,6 +15,7 @@ type Thread struct {
 	LastAt     time.Time `json:"last_at"`
 	LastFromMe bool      `json:"last_from_me"`
 	Snippet    string    `json:"snippet,omitempty"`
+	Labels     []string  `json:"labels,omitempty"`
 	Title      string    `json:"title,omitempty"`
 	Why        string    `json:"why,omitempty"`
 	Draft      string    `json:"draft,omitempty"`

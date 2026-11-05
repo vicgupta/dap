@@ -165,7 +165,7 @@ func Seed(now time.Time) []mailbox.Thread {
 		},
 		{
 			ID: "priya", Provider: "fake", Subject: "Thursday sync", WithName: "Priya Shah", WithEmail: "priya.shah@northwind.co",
-			LastAt: now.Add(-26 * time.Hour), LastFromMe: false,
+			LastAt: now.Add(-26 * time.Hour), LastFromMe: false, Labels: []string{"flagged"},
 			Snippet:  "Can we lock Thursday at 2?",
 			Title:    "Reply to Priya Shah: confirm Thursday 2pm",
 			Why:      "Calendar is free · draft is one line",

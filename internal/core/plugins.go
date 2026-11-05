@@ -26,6 +26,8 @@ type InstallResult struct {
 	Description string     `json:"description,omitempty"`
 	Permissions []PermView `json:"permissions"`
 	Message     string     `json:"message,omitempty"`
+	// Sample is the declarative dry run shown before install.
+	Sample string `json:"sample,omitempty"`
 }
 
 // PermView is one permission in plain language.
@@ -56,6 +58,7 @@ func (a *App) install(dir string, approve bool, given map[string]any) (InstallRe
 		Type:        m.Type,
 		Description: m.Description,
 		Permissions: permViews([]manifest.Permission(m.Permissions)),
+		Sample:      a.declarativeSample(m, given),
 	}
 	if !approve {
 		res.Status = "approval_required"
@@ -127,6 +130,11 @@ func (a *App) install(dir string, approve bool, given map[string]any) (InstallRe
 func (a *App) Remove(name string) error {
 	a.mutex(name).Lock()
 	defer a.mutex(name).Unlock()
+	snap := a.store.Snapshot()
+	declarativePlugin := false
+	if rec := snap.Plugins[name]; rec != nil && rec.Manifest.Runtime == "declarative" {
+		declarativePlugin = true
+	}
 	a.host.Stop(name)
 	if err := a.store.Update(func(st *store.State) error {
 		if st.Plugins[name] == nil {
@@ -141,6 +149,11 @@ func (a *App) Remove(name string) error {
 	a.mu.Lock()
 	delete(a.rt, name)
 	a.mu.Unlock()
+	if declarativePlugin {
+		// The in-process handler is already stopped. Drop the scratch directory
+		// the core created for this plugin. Plugin state was deleted above.
+		_ = os.RemoveAll(filepath.Join(a.DataDir, "plugin-data", name))
+	}
 	a.log(ledger.Entry{Plugin: name, Kind: ledger.KindRemove, Message: "Removed " + name})
 	return nil
 }
@@ -284,6 +297,9 @@ func (a *App) startOne(name string) error {
 	dataDir := filepath.Join(a.DataDir, "plugin-data", name)
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return err
+	}
+	if m.Runtime == "declarative" {
+		return a.startDeclarative(name, m, cfg, token)
 	}
 	argv, err := m.Launch(rec.Dir)
 	if err != nil {

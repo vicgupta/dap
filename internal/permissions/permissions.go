@@ -67,6 +67,14 @@ func humanize(name string) string {
 		return "Prepare a draft, without sending"
 	case "mail.send":
 		return "Send mail as you"
+	case "mail.label":
+		return "Record a label on a thread"
+	case "reminder.create":
+		return "Record a reminder"
+	case "report.review":
+		return "Show a report in the inbox"
+	case "workflow.run":
+		return "Run a checklist step"
 	case "web.read":
 		return "Read public web pages"
 	case "web.fetch":

@@ -108,9 +108,10 @@ func (c *Client) thread(ctx context.Context, token, me, id string) (mailbox.Thre
 	var raw struct {
 		ID       string `json:"id"`
 		Messages []struct {
-			ID       string `json:"id"`
-			Snippet  string `json:"snippet"`
-			Internal int64  `json:"internalDate,string"`
+			ID       string   `json:"id"`
+			Snippet  string   `json:"snippet"`
+			LabelIDs []string `json:"labelIds"`
+			Internal int64    `json:"internalDate,string"`
 			Payload  struct {
 				Headers []struct {
 					Name  string `json:"name"`
@@ -157,6 +158,7 @@ func (c *Client) thread(ctx context.Context, token, me, id string) (mailbox.Thre
 		LastAt:     when,
 		LastFromMe: fromMe,
 		Snippet:    last.Snippet,
+		Labels:     append([]string(nil), last.LabelIDs...),
 		Short:      len(last.Snippet) > 0 && len(last.Snippet) < 80,
 		Evidence:   "thread " + raw.ID,
 	}, nil

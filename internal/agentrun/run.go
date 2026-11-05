@@ -175,6 +175,13 @@ func Prompt(in PromptInput) string {
 	b.WriteString("Change plugin.yaml so it is not the starter manifest: set the description, the type, and the smallest permissions that do the job. ")
 	b.WriteString("Do not bypass guardrails. Use the least permissions that work. ")
 	b.WriteString("Do not handle raw tokens. Stdout of the plugin must be JSON-RPC only.\n")
+	b.WriteString("If the request fits a declarative plugin, do not write TypeScript. ")
+	b.WriteString("A declarative plugin is only plugin.yaml with apiVersion dap/v1 and kind declarative, no entrypoint and no permissions list. ")
+	b.WriteString("Use it for a schedule or the email.received event, the email service (not a named provider), fixed comparisons (sender, sender_domain, subject_contains, snippet_contains, label, older_than, newer_than, last_from_me, no_reply_for), and an output that is a report or the actions label, draft, reminder, send, or checklist. ")
+	b.WriteString("Settings are typed fields with defaults. Do not add an llm block; it is not supported yet. ")
+	b.WriteString("Delete the TypeScript starter, package.json, and vendor when you switch to declarative. ")
+	b.WriteString("If the request needs web.fetch, a loop, or anything outside that vocabulary, keep the TypeScript plugin. ")
+	b.WriteString("The shape is documented in docs/plugins/declarative.md when that file is reachable.\n")
 	if strings.TrimSpace(in.Name) != "" {
 		b.WriteString("Set name in plugin.yaml to " + strings.TrimSpace(in.Name) + " and keep that name.\n")
 	} else if strings.HasPrefix(in.DirName, "draft-") {

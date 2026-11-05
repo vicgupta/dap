@@ -1,15 +1,16 @@
 id: daily-digest
 title: Daily digest
-blurb: One morning card summarizing yesterday's mail.
+blurb: One morning card summarizing recent mail.
 mode: install
 permissions:
   - mail.read
+  - report.review
 connections:
   - gmail
   - outlook
 settings:
-  - key: provider
+  - key: window
     type: string
-    label: Mailbox
-    description: gmail, outlook, or fake
-    default: gmail
+    label: How far back
+    description: 24h, 7d, or 30m
+    default: 24h

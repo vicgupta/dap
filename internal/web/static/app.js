@@ -735,13 +735,14 @@ function pluginsView() {
       <h2 style="margin:0">${esc(preview.name)} wants these permissions</h2>
       <p class="sub">${esc(preview.type)} · ${esc(preview.version)}. Anything not listed is denied.</p>
       ${(preview.permissions || []).map((perm) => `<div class="perm"><div><strong>${esc(perm.name)}</strong><div class="sub">${esc(perm.plain)}</div></div><span class="pill ${esc(perm.mode)}">${esc(modeLabel(perm.mode))}</span></div>`).join("")}
+      ${preview.sample ? `<pre class="create-log">${esc(preview.sample)}</pre>` : ""}
       <div class="actions" style="margin-top:12px">
         <button class="primary" data-act="confirm-install">Approve and install</button>
         <button class="quiet" data-act="cancel-install">Cancel</button>
       </div>
     </div>` : "";
   return shell(`
-    <header class="page-head"><div><h1>Plugins</h1><p>Drop-in packages. Each one runs in its own process.</p></div></header>
+    <header class="page-head"><div><h1>Plugins</h1><p>Code plugins run in their own process. Declarative plugins run inside DAP.</p></div></header>
     <form class="card plugin-block" data-act="preview-install" style="margin-bottom:14px">
       <h2 style="margin:0 0 8px">Install a plugin</h2>
       <div class="inline">
@@ -832,7 +833,7 @@ function templateGrid(selected) {
     <button type="button" class="template-card${blankOn ? " selected" : ""}" data-act="create-template" data-template="" aria-pressed="${blankOn ? "true" : "false"}">
       <span class="template-mode">Blank</span>
       <strong>Describe your own</strong>
-      <span class="sub">TypeScript starter. Your agent sets the type.</span>
+      <span class="sub">Declarative YAML when it fits. TypeScript otherwise.</span>
     </button>
     ${cards}
   </div>`;

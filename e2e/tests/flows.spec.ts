@@ -83,6 +83,9 @@ test("create job survives reload and auto-installs", async ({ page }, testInfo) 
   }
   await expect(page.locator(".create-status")).toHaveText("Installed", { timeout: 30_000 });
   await expect(page.getByText("inbox-triage is installed")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Change card" })).toBeVisible();
+  await expect(page.getByText("Sample run")).toBeVisible();
+  await expect(page.getByText("mail.read")).toBeVisible();
   if (testInfo.project.name === "chromium") {
     await page.screenshot({ path: path.join(shotRoot, "create_installed.png") });
   }

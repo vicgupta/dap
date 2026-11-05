@@ -13,6 +13,7 @@ import (
 	"github.com/robfig/cron/v3"
 	"gopkg.in/yaml.v3"
 
+	"github.com/vicgupta/dap/internal/declarative"
 	"github.com/vicgupta/dap/internal/layout"
 	"github.com/vicgupta/dap/internal/semver"
 	"github.com/vicgupta/dap/internal/version"
@@ -44,6 +45,9 @@ type Manifest struct {
 	Schedule      Schedule       `json:"schedule" yaml:"schedule"`
 	UI            *UI            `json:"ui,omitempty" yaml:"ui,omitempty"`
 	Tile          *TileSpec      `json:"tile,omitempty" yaml:"tile,omitempty"`
+	// Declarative is set when kind is declarative. It is not read from YAML
+	// and it is not stored in state.json. start reloads plugin.yaml.
+	Declarative *declarative.Plugin `json:"-" yaml:"-"`
 }
 
 // TileSpec is the dashboard tile's preferred span and the smallest span
@@ -307,6 +311,13 @@ func Load(dir string) (Manifest, error) {
 
 // Parse decodes YAML and validates it. dir may be empty to skip filesystem checks.
 func Parse(b []byte, dir string) (Manifest, error) {
+	if declarative.LooksLike(b) {
+		p, err := declarative.Compile(b)
+		if err != nil {
+			return Manifest{}, err
+		}
+		return projectDeclarative(p, dir)
+	}
 	var m Manifest
 	dec := yaml.NewDecoder(strings.NewReader(string(b)))
 	dec.KnownFields(true)
@@ -353,11 +364,15 @@ func (m *Manifest) Validate(dir string) error {
 	if !version.SupportsInterface(m.Interface) {
 		return fmt.Errorf("unsupported interface %q", m.Interface)
 	}
-	if len(m.Entrypoint) == 0 {
+	if m.Runtime == "declarative" {
+		if m.Declarative == nil {
+			return fmt.Errorf("declarative plugin spec is missing")
+		}
+	} else if len(m.Entrypoint) == 0 {
 		return fmt.Errorf("entrypoint is required")
 	}
 	switch m.Runtime {
-	case "", "node", "bun":
+	case "", "node", "bun", "declarative":
 	default:
 		return fmt.Errorf("runtime must be node or bun")
 	}
@@ -437,7 +452,7 @@ func (m *Manifest) Validate(dir string) error {
 			m.UI.Title = m.Name
 		}
 	}
-	if dir != "" {
+	if dir != "" && m.Runtime != "declarative" {
 		if _, err := m.Entrypoint.Command(dir); err != nil {
 			return err
 		}
@@ -530,6 +545,9 @@ func (s Schedule) Label() string {
 
 // Launch resolves the entrypoint and, when runtime is set, the Node or Bun binary.
 func (m Manifest) Launch(dir string) ([]string, error) {
+	if m.Runtime == "declarative" {
+		return nil, fmt.Errorf("declarative plugins run inside DAP and have no entrypoint")
+	}
 	argv, err := m.Entrypoint.Command(dir)
 	if err != nil {
 		return nil, err

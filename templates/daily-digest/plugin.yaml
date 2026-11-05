@@ -1,23 +1,26 @@
+apiVersion: dap/v1
+kind: declarative
 name: daily-digest
 version: 0.1.0
 min_dap_version: 0.1.0
 type: watcher
-interface: dap.plugin.v1
-description: One morning card summarizing yesterday's mail. Nothing is sent.
-runtime: node
-entrypoint: dist/index.js
-permissions:
-  - name: mail.read
-    mode: allowed
-    description: Read yesterday's threads for the morning card
-provides:
-  - digests
-config:
-  - key: provider
+description: One morning card summarizing recent mail. Nothing is sent.
+settings:
+  - key: window
     type: string
-    description: Mailbox to read (gmail, outlook, or fake)
-    default: gmail
-schedule:
-  cron: "0 8 * * *"
+    label: How far back
+    description: 24h, 7d, or 30m
+    default: 24h
+triggers:
+  - schedule:
+      cron: "0 8 * * *"
+inputs:
+  - service: email
+    window_setting: window
+output:
+  limit: 8
+  report:
+    title: Daily digest
+    line: subject
 tile:
   size: medium

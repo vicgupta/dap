@@ -1,6 +1,6 @@
 # Plugins
 
-A plugin is a directory with `plugin.yaml` and an entrypoint. `da plugin install` records that directory's absolute path. It does not copy the files. Rebuild `da` only when the core changes.
+A plugin is a directory with `plugin.yaml`. A code plugin also has an entrypoint. A declarative plugin is only the YAML file (`apiVersion: dap/v1`, `kind: declarative`) and is run by the core. See [plugins/declarative.md](plugins/declarative.md). `da plugin install` records that directory's absolute path. It does not copy the files. Rebuild `da` only when the core changes.
 
 To write one, follow [plugin-authoring.md](plugin-authoring.md). The schema is [schemas/plugin.schema.json](../schemas/plugin.schema.json). `da plugin validate <path>` checks it.
 
