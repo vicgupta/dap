@@ -1,27 +1,48 @@
+apiVersion: dap/v1
+kind: declarative
 name: inbox-triage
 version: 0.1.0
 min_dap_version: 0.1.0
 type: watcher
-interface: dap.plugin.v1
 description: Labels and summarizes new threads into Inbox cards. Nothing is sent.
-runtime: node
-entrypoint: dist/index.js
-permissions:
-  - name: mail.read
-    mode: allowed
-    description: Read new threads so they can be labeled
-provides:
-  - triage
-config:
-  - key: provider
-    type: string
-    description: Mailbox to read (gmail, outlook, or fake)
-    default: gmail
+settings:
   - key: top
     type: number
-    description: How many threads to put on the card
+    label: Threads to show
+    description: How many threads land on the card
     default: 5
-schedule:
-  every: 1h
+  - key: urgent_words
+    type: list
+    label: Urgent words
+    description: Subjects containing one of these are labeled Needs a reply
+    default:
+      - urgent
+      - asap
+      - invoice
+      - payment
+      - deadline
+triggers:
+  - schedule: every 1h
+  - event: email.received
+inputs:
+  - service: email
+    window: 24h
+rules:
+  - id: urgent
+    when:
+      any:
+        - subject_contains:
+            setting: urgent_words
+        - subject_contains: action required
+output:
+  limit_setting: top
+  unmatched_label: Review
+  report:
+    title: Inbox triage
+    line: subject
+  actions:
+    - type: label
+      rule: urgent
+      label: Needs a reply
 tile:
   size: medium

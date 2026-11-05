@@ -1,0 +1,265 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dap.dev/schemas/declarative.schema.json",
+  "title": "DAP declarative plugin",
+  "description": "A no-code plugin. apiVersion dap/v1 and kind declarative. The core executes it. There is no entrypoint.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "name", "version", "min_dap_version", "triggers", "output"],
+  "properties": {
+    "apiVersion": {
+      "const": "dap/v1",
+      "description": "Only dap/v1."
+    },
+    "kind": {
+      "const": "declarative"
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,63}$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "min_dap_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "type": {
+      "enum": ["watcher", "capability", "workflow"],
+      "description": "Display label. Defaults to watcher."
+    },
+    "description": { "type": "string" },
+    "settings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/setting" }
+    },
+    "triggers": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": { "$ref": "#/$defs/trigger" }
+    },
+    "inputs": {
+      "type": "array",
+      "maxItems": 4,
+      "items": { "$ref": "#/$defs/input" },
+      "description": "Abstract services. email is the only service this core provides. Add a service by extending this schema and the runtime together."
+    },
+    "rules": {
+      "type": "array",
+      "maxItems": 32,
+      "items": { "$ref": "#/$defs/rule" }
+    },
+    "output": { "$ref": "#/$defs/output" },
+    "llm": {
+      "$ref": "#/$defs/llm",
+      "description": "Reserved. This core rejects a plugin that sets llm. There is no model call yet."
+    },
+    "tile": { "$ref": "#/$defs/tile" }
+  },
+  "$defs": {
+    "setting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "type"],
+      "properties": {
+        "key": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$" },
+        "type": { "enum": ["string", "number", "bool", "duration", "list"] },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "required": { "type": "boolean" },
+        "default": {}
+      }
+    },
+    "trigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "maxProperties": 1,
+      "properties": {
+        "schedule": { "$ref": "#/$defs/schedule" },
+        "event": {
+          "enum": ["email.received"],
+          "description": "Events the core can notice. email.received keeps threads newer than the previous successful run. A plugin with only this event is polled every 15m by the core."
+        }
+      }
+    },
+    "schedule": {
+      "description": "Same schedule language as a code plugin.",
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "every": { "type": "string" },
+            "cron": { "type": "string" },
+            "at": { "type": "string" },
+            "recurrence": { "enum": ["daily", "weekdays", "weekly"] },
+            "day": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["service"],
+      "properties": {
+        "service": {
+          "enum": ["email"],
+          "description": "email reads whatever mailbox is connected (Gmail, Outlook, or the demo mailbox). The plugin does not name a provider."
+        },
+        "window": {
+          "type": "string",
+          "description": "How far back to read. 30m, 24h, 7d, or a Go duration of at least 1m."
+        },
+        "window_setting": {
+          "type": "string",
+          "description": "A string or duration setting that holds the window."
+        }
+      }
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "when"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$" },
+        "when": { "$ref": "#/$defs/when" }
+      }
+    },
+    "when": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "maxProperties": 1,
+      "properties": {
+        "all": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/clause" }
+        },
+        "any": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/clause" }
+        }
+      }
+    },
+    "clause": {
+      "description": "One comparison. No nesting, no scripts.",
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["sender"], "properties": { "sender": { "$ref": "#/$defs/stringOrListOrSetting" } } },
+        { "type": "object", "additionalProperties": false, "required": ["sender_domain"], "properties": { "sender_domain": { "$ref": "#/$defs/stringOrListOrSetting" } } },
+        { "type": "object", "additionalProperties": false, "required": ["subject_contains"], "properties": { "subject_contains": { "$ref": "#/$defs/stringOrListOrSetting" } } },
+        { "type": "object", "additionalProperties": false, "required": ["snippet_contains"], "properties": { "snippet_contains": { "$ref": "#/$defs/stringOrListOrSetting" } } },
+        { "type": "object", "additionalProperties": false, "required": ["label"], "properties": { "label": { "$ref": "#/$defs/stringOrListOrSetting" } } },
+        { "type": "object", "additionalProperties": false, "required": ["older_than"], "properties": { "older_than": { "$ref": "#/$defs/durationOrSetting" } } },
+        { "type": "object", "additionalProperties": false, "required": ["newer_than"], "properties": { "newer_than": { "$ref": "#/$defs/durationOrSetting" } } },
+        { "type": "object", "additionalProperties": false, "required": ["no_reply_for"], "properties": { "no_reply_for": { "$ref": "#/$defs/durationOrSetting" } } },
+        { "type": "object", "additionalProperties": false, "required": ["last_from_me"], "properties": { "last_from_me": { "$ref": "#/$defs/boolOrSetting" } } }
+      ]
+    },
+    "stringOrListOrSetting": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        { "$ref": "#/$defs/settingRef" }
+      ]
+    },
+    "durationOrSetting": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        { "$ref": "#/$defs/settingRef" }
+      ]
+    },
+    "boolOrSetting": {
+      "oneOf": [
+        { "type": "boolean" },
+        { "$ref": "#/$defs/settingRef" }
+      ]
+    },
+    "settingRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["setting"],
+      "properties": {
+        "setting": { "type": "string", "minLength": 1 }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "anyOf": [
+        { "required": ["report"] },
+        { "required": ["actions"] }
+      ],
+      "properties": {
+        "limit": { "type": "integer", "minimum": 1, "maximum": 50 },
+        "limit_setting": { "type": "string" },
+        "unmatched_label": {
+          "type": "string",
+          "description": "Label for threads in the window that matched no rule. Used on the report only."
+        },
+        "report": { "$ref": "#/$defs/report" },
+        "actions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/action" }
+        }
+      }
+    },
+    "report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1 },
+        "line": { "enum": ["subject", "sender", "snippet", "label"] }
+      }
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["label", "draft", "reminder", "send", "checklist"] },
+        "rule": { "type": "string" },
+        "label": { "type": "string" },
+        "title": { "type": "string" },
+        "body": { "enum": ["nudge", "acknowledge", "snippet"] },
+        "subject": { "enum": ["reply", "same"] },
+        "signature_setting": { "type": "string" },
+        "steps_setting": { "type": "string" }
+      }
+    },
+    "llm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task"],
+      "description": "Not supported. classify or summarize would call the user's configured coding agent. This core has no such call. Validation fails when llm is set.",
+      "properties": {
+        "task": { "enum": ["classify", "summarize"] },
+        "input": { "type": "string", "description": "Which input the step would read. Reserved." }
+      }
+    },
+    "tile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "size": { "enum": ["small", "medium", "large"] },
+        "min": { "enum": ["small", "medium", "large"] }
+      }
+    }
+  }
+}

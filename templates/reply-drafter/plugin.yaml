@@ -1,26 +1,36 @@
+apiVersion: dap/v1
+kind: declarative
 name: reply-drafter
 version: 0.1.0
 min_dap_version: 0.1.0
 type: watcher
-interface: dap.plugin.v1
-description: Drafts replies for flagged threads. It never sends.
-runtime: node
-entrypoint: dist/index.js
-permissions:
-  - name: mail.read
-    mode: allowed
-    description: Read flagged threads
-  - name: mail.draft
-    mode: allowed
-    description: Save a draft reply. Nothing is sent.
-provides:
-  - drafts
-config:
-  - key: provider
+description: Drafts replies for flagged threads. It never sends until you approve, and approval only saves a draft.
+settings:
+  - key: signature
     type: string
-    description: Mailbox to read (gmail, outlook, or fake)
-    default: gmail
-schedule:
-  every: 1h
+    label: Signature
+    default: ""
+triggers:
+  - schedule: every 1h
+inputs:
+  - service: email
+    window: 7d
+rules:
+  - id: flagged
+    when:
+      any:
+        - label: flagged
+        - subject_contains: flag
+output:
+  limit: 5
+  report:
+    title: Reply drafter
+    line: subject
+  actions:
+    - type: draft
+      rule: flagged
+      body: snippet
+      subject: reply
+      signature_setting: signature
 tile:
   size: medium

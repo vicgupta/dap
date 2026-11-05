@@ -161,7 +161,7 @@ func toThreads(provider string, msgs []composio.Message) []Thread {
 			ID: id, MessageID: m.ID, Provider: provider,
 			Subject:  strings.TrimPrefix(m.Subject, "Re: "),
 			WithName: otherName, WithEmail: otherEmail, LastAt: m.At,
-			LastFromMe: m.FromMe, Snippet: m.Snippet,
+			LastFromMe: m.FromMe, Snippet: m.Snippet, Labels: append([]string(nil), m.Labels...),
 			Short:    len(m.Snippet) > 0 && len(m.Snippet) < 80,
 			Evidence: "thread " + id,
 		})

@@ -4,8 +4,9 @@ package templates
 
 import "embed"
 
-// Files holds the six studio templates. template.yaml is metadata;
-// the other files are the plugin the studio copies into a draft.
+// Files holds the six studio templates. template.yaml is metadata.
+// Five of them are declarative plugin.yaml files. competitor-research
+// stays a code plugin. The studio copies everything except template.yaml.
 //
 //go:embed inbox-triage follow-up-nudger daily-digest reply-drafter scheduled-checklist competitor-research
 var Files embed.FS

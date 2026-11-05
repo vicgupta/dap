@@ -3,8 +3,9 @@ package pluginauthor
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/vicgupta/dap/internal/manifest"
 )
 
 func TestEachTemplateValidates(t *testing.T) {
@@ -33,14 +34,13 @@ func TestEachTemplateValidates(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dir, "template.yaml")); !os.IsNotExist(err) {
 			t.Fatal("template.yaml was copied into the plugin")
 		}
-		raw, err := os.ReadFile(filepath.Join(dir, "plugin.yaml"))
+		m, err := manifest.Load(dir)
 		if err != nil {
 			t.Fatal(err)
 		}
-		text := string(raw)
 		for _, perm := range tmpl.Permissions {
-			if !strings.Contains(text, "name: "+perm) {
-				t.Fatalf("%s missing %s\n%s", tmpl.ID, perm, text)
+			if _, ok := m.FindPermission(perm); !ok {
+				t.Fatalf("%s missing %s in %+v", tmpl.ID, perm, m.Permissions)
 			}
 		}
 		marked := MarkerPresent(dir)

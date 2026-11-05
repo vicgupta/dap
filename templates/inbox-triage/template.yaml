@@ -4,17 +4,24 @@ blurb: Labels and summarizes new threads into Inbox cards.
 mode: install
 permissions:
   - mail.read
+  - report.review
+  - mail.label
 connections:
   - gmail
   - outlook
 settings:
-  - key: provider
-    type: string
-    label: Mailbox
-    description: gmail, outlook, or fake
-    default: gmail
   - key: top
     type: number
     label: Threads to show
-    description: How many new threads land on the card
+    description: How many threads land on the card
     default: 5
+  - key: urgent_words
+    type: list
+    label: Urgent words
+    description: Subjects containing one of these are labeled Needs a reply
+    default:
+      - urgent
+      - asap
+      - invoice
+      - payment
+      - deadline

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vicgupta/dap/internal/declarative"
+	"github.com/vicgupta/dap/internal/mail"
 	"github.com/vicgupta/dap/internal/manifest"
 	"github.com/vicgupta/dap/internal/model"
 	"github.com/vicgupta/dap/internal/pluginhost"
@@ -46,6 +48,9 @@ func ValidateIn(dir, dataDir string) Report {
 	if err != nil {
 		add(Check{Name: "manifest", OK: false, Detail: err.Error()})
 		return rep
+	}
+	if declarative.LooksLike(raw) {
+		return validateDeclarative(dir, raw)
 	}
 	schemaErrs := SchemaErrors(raw)
 	if len(schemaErrs) > 0 {
@@ -192,6 +197,49 @@ func checkCards(cards []model.CardDraft) string {
 		}
 	}
 	return ""
+}
+
+func validateDeclarative(dir string, raw []byte) Report {
+	rep := Report{Path: dir, OK: true}
+	add := func(c Check) {
+		if !c.OK {
+			rep.OK = false
+		}
+		rep.Checks = append(rep.Checks, c)
+	}
+	errs := declarative.SchemaErrors(raw)
+	if len(errs) > 0 {
+		add(Check{Name: "schema", OK: false, Detail: strings.Join(errs, "; ")})
+		return rep
+	}
+	add(Check{Name: "schema", OK: true, Detail: "plugin.yaml matches schemas/declarative.schema.json"})
+	m, err := manifest.Parse(raw, dir)
+	if err != nil {
+		add(Check{Name: "manifest", OK: false, Detail: err.Error()})
+		return rep
+	}
+	rep.Name = m.Name
+	var names []string
+	for _, p := range m.Permissions {
+		names = append(names, p.Name+" ("+p.Mode+")")
+	}
+	add(Check{Name: "manifest", OK: true, Detail: "declarative " + m.Version})
+	add(Check{Name: "permissions", OK: true, Detail: strings.Join(names, ", ")})
+	if m.Declarative == nil {
+		add(Check{Name: "dry_run", OK: false, Detail: "declarative spec is missing"})
+		return rep
+	}
+	_, text, err := declarative.Sample(*m.Declarative, nil, time.Now(), mail.Seed(time.Now()))
+	if err != nil {
+		add(Check{Name: "dry_run", OK: false, Detail: err.Error()})
+		return rep
+	}
+	line := text
+	if i := strings.IndexByte(line, '\n'); i >= 0 {
+		line = line[:i]
+	}
+	add(Check{Name: "dry_run", OK: true, Detail: line})
+	return rep
 }
 
 func stderrHint(h *pluginhost.Host, name string) string {

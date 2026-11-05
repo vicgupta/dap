@@ -18,6 +18,14 @@ Core version: `0.1.0`. Interface: `dap.plugin.v1`.
 
 All three types implement the same methods: `initialize`, `watch`, `propose`, `act`, `report`, and `shutdown`. Pick the label that matches the job so a person reading the Plugins page understands it.
 
+## Declarative plugins
+
+Prefer a declarative plugin when the work fits one `plugin.yaml` and no program. Set `apiVersion: dap/v1` and `kind: declarative`. There is no entrypoint. The core runs it. The spec is [plugins/declarative.md](plugins/declarative.md) and the schema is [schemas/declarative.schema.json](../schemas/declarative.schema.json).
+
+Use it for a schedule or the `email.received` event, the `email` service (Gmail and Outlook through the same input), the fixed comparisons in that spec, and an output that is a report or one of `label`, `draft`, `reminder`, `send`, or `checklist`. Do not declare permissions. DAP derives them and shows them on the install card. Do not add an `llm` block. It is reserved and rejected.
+
+Write TypeScript, as the rest of this page describes, when the request needs `web.fetch`, a loop, or anything outside that vocabulary. A declarative plugin never acts without an approved card.
+
 ## plugin.yaml
 
 Unknown keys are rejected. `da plugin validate` reports the schema path and the message.

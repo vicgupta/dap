@@ -13,6 +13,12 @@ You are editing the plugin in this directory (` + name + `, type ` + kind + `, l
 
 ` + prefer + `
 
+## Declarative or TypeScript
+
+Prefer a declarative plugin when the request fits one file and no code. Write only plugin.yaml with apiVersion dap/v1 and kind declarative. Delete this TypeScript starter, package.json, and vendor/plugin-sdk. Do not set entrypoint, runtime, or permissions. DAP derives permissions from the email service and the actions you use. Triggers are a schedule (every, cron, at, weekdays at, weekly at) or the event email.received. The only service is email. Comparisons are sender, sender_domain, subject_contains, snippet_contains, label, older_than, newer_than, last_from_me, and no_reply_for, combined with all or any. Output is a report, or the actions label, draft, reminder, send, and checklist. Do not add an llm block. It is not supported yet.
+
+Keep this TypeScript plugin when the request needs web.fetch, a loop, or anything outside that vocabulary. Competitor page watches stay code plugins.
+
 
 ## Rules
 

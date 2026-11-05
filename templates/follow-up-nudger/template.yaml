@@ -1,12 +1,10 @@
 id: follow-up-nudger
 title: Follow-up nudger
-blurb: Built on inbox follow-ups. Drafts a nudge and never sends.
-mode: customize
-description: |
-  Nudge threads that have been waiting on me. Draft the follow-up in my voice and never send it.
-  Follow the inbox-followups pattern: read mail, prepare a draft, and pause anything that would send.
+blurb: Drafts a nudge when a thread has been waiting. Nothing is sent until you approve.
+mode: install
 permissions:
   - mail.read
+  - report.review
   - mail.draft
 connections:
   - gmail
