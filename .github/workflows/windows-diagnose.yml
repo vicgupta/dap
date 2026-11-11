@@ -1,0 +1,53 @@
+# Temporary: reproduce the v0.1.0-alpha.6 Windows install on windows-latest.
+name: Diagnose Windows install
+
+on:
+  push:
+    branches: [cursor/windows-zip-install-6acb]
+
+jobs:
+  alpha6:
+    runs-on: windows-latest
+    steps:
+      - name: Windows PowerShell 5.1 install.ps1 from alpha.6
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Continue"
+          Write-Host "PSVersion $($PSVersionTable.PSVersion)"
+          Write-Host "OS=$env:OS ARCH=$env:PROCESSOR_ARCHITECTURE"
+          $dir = Join-Path $env:RUNNER_TEMP "dap-alpha6"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          Set-Location $dir
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $ProgressPreference = "SilentlyContinue"
+          Invoke-WebRequest -Uri "https://github.com/vicgupta/dap/releases/download/v0.1.0-alpha.6/install.ps1" -OutFile .\install.ps1 -UseBasicParsing
+          Write-Host "---- install.ps1 ----"
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
+          Write-Host "EXIT $LASTEXITCODE"
+          Get-ChildItem -Force | Format-Table Name, Length
+
+      - name: Isolate download and Expand-Archive
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Continue"
+          $ProgressPreference = "SilentlyContinue"
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $dir = Join-Path $env:RUNNER_TEMP "dap-isolate"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          Set-Location $dir
+          $zip = Join-Path $dir "da-0.1.0-alpha.6-windows-amd64.zip"
+          Invoke-WebRequest -Uri "https://github.com/vicgupta/dap/releases/download/v0.1.0-alpha.6/da-0.1.0-alpha.6-windows-amd64.zip" -OutFile $zip -UseBasicParsing
+          Write-Host "zip bytes $((Get-Item $zip).Length)"
+          Write-Host "ADS:"; Get-Item $zip -Stream * | Format-Table Stream, Length
+          $missing = Join-Path $dir "missing-dest"
+          Write-Host "---- Expand-Archive missing dest ----"
+          try { Expand-Archive -LiteralPath $zip -DestinationPath $missing -Force; Write-Host "missing-dest OK" } catch { Write-Host "missing-dest FAIL: $($_.Exception.Message)" }
+          $made = Join-Path $dir "made-dest"
+          New-Item -ItemType Directory -Force -Path $made | Out-Null
+          Write-Host "---- Expand-Archive existing dest, still blocked ----"
+          try { Expand-Archive -LiteralPath $zip -DestinationPath $made -Force; Write-Host "blocked OK" } catch { Write-Host "blocked FAIL: $($_.Exception.Message)" }
+          Unblock-File -LiteralPath $zip
+          $unblocked = Join-Path $dir "unblocked"
+          New-Item -ItemType Directory -Force -Path $unblocked | Out-Null
+          Write-Host "---- Expand-Archive after Unblock-File ----"
+          try { Expand-Archive -LiteralPath $zip -DestinationPath $unblocked -Force; Write-Host "unblocked OK"; Get-ChildItem $unblocked | Format-Table Name, Length } catch { Write-Host "unblocked FAIL: $($_.Exception.Message)" }
