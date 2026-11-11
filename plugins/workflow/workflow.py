@@ -252,7 +252,7 @@ def handle(method, params):
         all_steps = steps()
         step = next((item for item in all_steps if item["id"] == step_id), None)
         if step is None:
-            raise RuntimeError("unknown step %s" % step_id)
+            return {"status": "failed", "summary": "Unknown step."}
         check = api(
             "POST",
             "/call",

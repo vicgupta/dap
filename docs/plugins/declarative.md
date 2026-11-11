@@ -63,7 +63,7 @@ Set at least one. A trigger object is either `schedule` or `event`, not both. On
 
 `schedule` uses the same language as a code plugin: `every 1h`, `cron 0 8 * * *`, `at 08:00`, `weekdays at 08:00`, `weekly at 08:00`, or the structured form (`every`, `cron`, `at`, `recurrence`, `day`).
 
-`event` is only `email.received`. On each run, threads older than the previous successful run are dropped. Combine it with a window, not with `no_reply_for`: a thread that has been waiting is not "new".
+`event` is only `email.received`. On each run, threads older than the last successful mail read are dropped. A run with no mailbox, or a run that errors before the mail is read, does not move that time. Combine it with a window, not with `no_reply_for`: a thread that has been waiting is not "new".
 
 If the plugin has an event and no schedule, the core polls it every 15 minutes. That poll is removed on uninstall.
 

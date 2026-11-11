@@ -39,9 +39,12 @@ func FromManifest(s manifest.Schedule) Spec {
 }
 
 // State is the persisted cursor for one plugin.
+// MailChecked is the last time a declarative plugin read mail successfully.
+// It stays put when no mailbox is connected or the read fails.
 type State struct {
 	NextRun         time.Time  `json:"next_run"`
 	LastRun         *time.Time `json:"last_run,omitempty"`
+	MailChecked     *time.Time `json:"mail_checked,omitempty"`
 	LastTrigger     string     `json:"last_trigger,omitempty"`
 	LastStatus      string     `json:"last_status,omitempty"`
 	LastError       string     `json:"last_error,omitempty"`

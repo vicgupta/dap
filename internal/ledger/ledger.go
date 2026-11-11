@@ -27,6 +27,7 @@ const (
 	KindApproved    = "card.approved"
 	KindEdited      = "card.edited"
 	KindRejected    = "card.rejected"
+	KindDismissed   = "card.dismissed"
 	KindSnoozed     = "card.snoozed"
 	KindActed       = "card.acted"
 	KindBlocked     = "card.blocked"

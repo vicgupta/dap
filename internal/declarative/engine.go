@@ -77,6 +77,9 @@ type Outcome struct {
 	Cards        []model.CardDraft
 	Metrics      []model.Metric
 	Note         string
+	// MailRead is true when every connected mailbox was read.
+	// A missing mailbox or a failed read leaves it false.
+	MailRead bool
 }
 
 // New builds an engine. Now, Mail, and State may be nil until used.
@@ -261,11 +264,14 @@ func (e *Engine) evaluate(ctx context.Context, since *time.Time) (Outcome, error
 
 	var threads []mailbox.Thread
 	note := ""
+	mailRead := false
 	if p.usesEmail() {
-		threads, note, err = e.loadMail(ctx, now)
+		threads, note, mailRead, err = e.loadMail(ctx, now)
 		if err != nil {
 			return Outcome{}, err
 		}
+		// since is the last successful mail read, not the last run.
+		// A nil cursor keeps every thread inside the window.
 		if p.HasEvent(EventEmail) && since != nil {
 			threads = newerThan(threads, *since)
 		}
@@ -318,6 +324,7 @@ func (e *Engine) evaluate(ctx context.Context, since *time.Time) (Outcome, error
 		},
 		Observations: obs,
 		Note:         note,
+		MailRead:     mailRead,
 		Metrics: []model.Metric{
 			{Key: "runs", Label: "Runs", Value: blob.Runs},
 		},
@@ -326,20 +333,20 @@ func (e *Engine) evaluate(ctx context.Context, since *time.Time) (Outcome, error
 	return out, nil
 }
 
-func (e *Engine) loadMail(ctx context.Context, now time.Time) ([]mailbox.Thread, string, error) {
+func (e *Engine) loadMail(ctx context.Context, now time.Time) ([]mailbox.Thread, string, bool, error) {
 	if e.Mail == nil {
-		return nil, "No mailbox is connected", nil
+		return nil, "No mailbox is connected", false, nil
 	}
 	window, err := e.window()
 	if err != nil {
-		return nil, "", err
+		return nil, "", false, err
 	}
 	providers, err := e.Mail.Providers(ctx)
 	if err != nil {
-		return nil, "", err
+		return nil, "", false, err
 	}
 	if len(providers) == 0 {
-		return nil, "No mailbox is connected", nil
+		return nil, "No mailbox is connected", false, nil
 	}
 	var all []mailbox.Thread
 	var failed []string
@@ -352,14 +359,16 @@ func (e *Engine) loadMail(ctx context.Context, now time.Time) ([]mailbox.Thread,
 		all = append(all, threads...)
 	}
 	if len(failed) == len(providers) {
-		return nil, "Mailbox could not be read", nil
+		return nil, "Mailbox could not be read", false, nil
 	}
 	all = within(all, window, now)
 	note := ""
 	if len(failed) > 0 {
 		note = "Some mailboxes could not be read"
 	}
-	return all, note, nil
+	// A partial failure is not a successful read. The cursor stays put
+	// so the next run can try the mailbox that failed.
+	return all, note, len(failed) == 0, nil
 }
 
 func (e *Engine) window() (string, error) {
@@ -511,7 +520,8 @@ func orSubject(s string) string {
 
 func (e *Engine) cards(hits []hit, lines []string, note, title string) []model.CardDraft {
 	var cards []model.CardDraft
-	if e.Plugin.Output.Report != nil {
+	// An empty report is noise. The tile already shows the count or the reason.
+	if e.Plugin.Output.Report != nil && len(lines) > 0 {
 		cards = append(cards, e.reportCard(lines, note, title))
 	}
 	for _, h := range hits {

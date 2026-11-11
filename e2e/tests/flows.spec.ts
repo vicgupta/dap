@@ -30,7 +30,7 @@ test("decision inbox approve", async ({ page }) => {
       headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
       body: JSON.stringify({
         plugin: "hello-watch",
-        title: "Say hello",
+        title: "Browser inbox check",
         summary: "A greeting is waiting",
         permission: "demo.greet",
         effects: [],
@@ -41,7 +41,7 @@ test("decision inbox approve", async ({ page }) => {
   });
   await page.goto("/#/inbox");
   await expect(page.getByRole("heading", { name: "Decision inbox" })).toBeVisible();
-  const card = page.locator("article.decision", { hasText: "Say hello" });
+  const card = page.locator("article.decision", { hasText: "Browser inbox check" });
   await expect(card).toBeVisible();
   await card.getByRole("button", { name: "Approve" }).click();
   await expect(card).toHaveCount(0);

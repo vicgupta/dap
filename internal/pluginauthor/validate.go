@@ -68,30 +68,46 @@ func ValidateIn(dir, dataDir string) Report {
 	if !rep.OK {
 		return rep
 	}
-	if detail, err := prepareBuild(dir, dataDir); err != nil {
+	runDir := dir
+	if missingSDK(dir) {
+		staged, err := stageForValidate(dir, dataDir)
+		if err != nil {
+			add(Check{Name: "sdk", OK: false, Detail: err.Error()})
+			return rep
+		}
+		runDir = staged
+		add(Check{Name: "sdk", OK: true, Detail: "staged vendor/plugin-sdk for validation"})
+	}
+	if detail, err := prepareBuild(runDir, dataDir); err != nil {
 		add(Check{Name: "build", OK: false, Detail: err.Error()})
 		return rep
 	} else if detail != "" {
 		add(Check{Name: "build", OK: true, Detail: detail})
 	}
-	m, err = manifest.Parse(raw, dir)
+	m, err = manifest.Parse(raw, runDir)
 	if err != nil {
 		add(Check{Name: "manifest", OK: false, Detail: err.Error()})
 		return rep
 	}
-	argv, err := m.Launch(dir)
+	argv, err := m.Launch(runDir)
 	if err != nil {
 		add(Check{Name: "start", OK: false, Detail: err.Error()})
 		return rep
 	}
+	stub, err := startStubAPI(m.Name)
+	if err != nil {
+		add(Check{Name: "start", OK: false, Detail: err.Error()})
+		return rep
+	}
+	defer stub.Close()
 	host := pluginhost.New()
 	defer host.StopAll()
 	if err := host.Start(pluginhost.Options{
 		Name:    m.Name,
-		Dir:     dir,
+		Dir:     runDir,
 		Argv:    argv,
 		Env:     pluginhost.PluginEnvIn(dataDir, "DAP_PLUGIN="+m.Name),
-		DataDir: dir,
+		DataDir: runDir,
 	}); err != nil {
 		add(Check{Name: "start", OK: false, Detail: err.Error()})
 		return rep
@@ -110,10 +126,10 @@ func ValidateIn(dir, dataDir string) Report {
 		Interface:  "dap.plugin.v1",
 		DAPVersion: "0.1.0",
 		Config:     cfg,
-		PluginDir:  dir,
-		DataDir:    dir,
-		APIBase:    "http://127.0.0.1:9/v1/" + m.Name,
-		Token:      "conformance",
+		PluginDir:  runDir,
+		DataDir:    runDir,
+		APIBase:    stub.base,
+		Token:      conformanceToken,
 	}, &init)
 	if err != nil {
 		add(Check{Name: "initialize", OK: false, Detail: err.Error() + stderrHint(host, m.Name)})
@@ -127,7 +143,7 @@ func ValidateIn(dir, dataDir string) Report {
 
 	var watch pluginhost.WatchResult
 	if err := host.Call(ctx, m.Name, pluginhost.MethodWatch, pluginhost.WatchParams{}, &watch); err != nil {
-		add(Check{Name: "watch", OK: false, Detail: err.Error()})
+		add(Check{Name: "watch", OK: false, Detail: err.Error() + stderrHint(host, m.Name)})
 		return rep
 	}
 	if watch.Observations == nil {
@@ -137,7 +153,7 @@ func ValidateIn(dir, dataDir string) Report {
 
 	var proposed pluginhost.ProposeResult
 	if err := host.Call(ctx, m.Name, pluginhost.MethodPropose, pluginhost.ProposeParams{Observations: watch.Observations}, &proposed); err != nil {
-		add(Check{Name: "propose", OK: false, Detail: err.Error()})
+		add(Check{Name: "propose", OK: false, Detail: err.Error() + stderrHint(host, m.Name)})
 		return rep
 	}
 	if msg := checkCards(proposed.Cards); msg != "" {
@@ -149,7 +165,7 @@ func ValidateIn(dir, dataDir string) Report {
 	var acted model.ActResult
 	card := model.Card{ID: "c_conformance", Plugin: m.Name, Title: "Conformance", Kind: model.KindAction, Status: model.StatusActing}
 	if err := host.Call(ctx, m.Name, pluginhost.MethodAct, pluginhost.ActParams{Card: card}, &acted); err != nil {
-		add(Check{Name: "act", OK: false, Detail: err.Error()})
+		add(Check{Name: "act", OK: false, Detail: err.Error() + stderrHint(host, m.Name)})
 		return rep
 	}
 	if acted.Status != "done" && acted.Status != "failed" {

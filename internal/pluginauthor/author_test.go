@@ -97,3 +97,33 @@ func TestHelloWatchValidates(t *testing.T) {
 		t.Fatalf("%+v", rep.Checks)
 	}
 }
+
+func TestPluginsThatCallTheAPIValidate(t *testing.T) {
+	for _, dir := range []string{"../../plugins/inbox-followups", "../../plugins/workflow", "../../plugins/mail-fake"} {
+		rep := ValidateIn(dir, t.TempDir())
+		if !rep.OK {
+			t.Fatalf("%s: %+v", dir, rep.Checks)
+		}
+	}
+}
+
+func TestCompetitorResearchRepoCopyValidates(t *testing.T) {
+	dir := filepath.Join("..", "..", "templates", "competitor-research")
+	bare := Validate(dir)
+	if bare.OK {
+		t.Fatal("expected a clear SDK message without a data directory")
+	}
+	detail := ""
+	for _, c := range bare.Checks {
+		if !c.OK {
+			detail += c.Detail
+		}
+	}
+	if !strings.Contains(detail, "vendor/plugin-sdk/dist/index.js") || strings.Contains(detail, "ERR_MODULE_NOT_FOUND") {
+		t.Fatalf("detail %q", detail)
+	}
+	rep := ValidateIn(dir, t.TempDir())
+	if !rep.OK {
+		t.Fatalf("%+v", rep.Checks)
+	}
+}

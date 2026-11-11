@@ -42,7 +42,7 @@ type App struct {
 
 	mu           sync.Mutex
 	configMu     sync.Mutex
-	runMu        map[string]*sync.Mutex
+	runMu        map[string]*pluginLock
 	rt           map[string]*runtime
 	checks       []CheckRecord
 	orderErr     string
@@ -133,7 +133,7 @@ func Open(dir string) (*App, error) {
 		mail:       box,
 		host:       pluginhost.New(),
 		lock:       lk,
-		runMu:      map[string]*sync.Mutex{},
+		runMu:      map[string]*pluginLock{},
 		rt:         map[string]*runtime{},
 		busy:       map[string]int{},
 		adminToken: randomToken(),
@@ -395,12 +395,12 @@ func (a *App) now() time.Time {
 	return fn()
 }
 
-func (a *App) mutex(name string) *sync.Mutex {
+func (a *App) mutex(name string) *pluginLock {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	m, ok := a.runMu[name]
 	if !ok {
-		m = &sync.Mutex{}
+		m = newPluginLock()
 		a.runMu[name] = m
 	}
 	return m

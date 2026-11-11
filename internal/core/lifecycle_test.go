@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -193,16 +194,20 @@ func TestMissedRunCatchesUpOnce(t *testing.T) {
 	}
 	missed := 0
 	runs := 0
+	catchup := 0
 	for _, row := range rows {
 		if row.Kind == ledger.KindMissed && row.Plugin == "hello-watch" {
 			missed++
 		}
 		if row.Kind == ledger.KindRun && row.Plugin == "hello-watch" {
 			runs++
+			if strings.Contains(row.Message, "Caught up") {
+				catchup++
+			}
 		}
 	}
-	if missed != 1 || runs != 1 {
-		t.Fatalf("missed=%d runs=%d kinds=%v stderr=%s", missed, runs, kinds(rows), app.host.Stderr("hello-watch"))
+	if missed != 1 || catchup != 1 || runs != 2 {
+		t.Fatalf("missed=%d catchup=%d runs=%d kinds=%v stderr=%s", missed, catchup, runs, kinds(rows), app.host.Stderr("hello-watch"))
 	}
 	home := app.Home()
 	var hello PluginSummary
