@@ -39,15 +39,19 @@ type InitResult struct {
 	Health    model.Health `json:"health"`
 }
 
-// WatchParams asks for observations since the previous successful run.
+// WatchParams asks for observations since a cursor the core owns.
+// Declarative plugins that listen for email.received receive the last
+// successful mail read. Other plugins receive the previous run.
 type WatchParams struct {
 	Since *time.Time `json:"since,omitempty"`
 }
 
 // WatchResult is observations plus the home tile.
+// MailRead is true when a declarative plugin read every connected mailbox.
 type WatchResult struct {
 	Observations []model.Observation `json:"observations"`
 	Tile         model.Tile          `json:"tile"`
+	MailRead     bool                `json:"mail_read,omitempty"`
 }
 
 // ProposeParams feeds the observations that watch just returned.

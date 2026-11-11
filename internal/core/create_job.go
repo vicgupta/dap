@@ -37,7 +37,8 @@ const (
 	starterDescription       = "Starter plugin. Replace this manifest with the plugin you were asked to build."
 )
 
-// validatePlugin is the single conformance pass for a create job.
+// validatePlugin is the single conformance pass for a create job, including
+// the "Checking the plugin" step. It is ValidateIn, which starts the stub API.
 // Tests replace it to count calls. dataDir keeps npm and temp files in rundir.
 var validatePlugin = pluginauthor.ValidateIn
 

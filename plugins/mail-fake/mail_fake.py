@@ -30,7 +30,7 @@ def handle(method, params):
     if method == "propose":
         return {"cards": []}
     if method == "act":
-        raise RuntimeError("The demo mailbox does not send on its own.")
+        return {"status": "failed", "summary": "The demo mailbox does not send on its own."}
     if method == "report":
         return {"metrics": [{"key": "provider", "label": "Provider", "value": "fake"}]}
     if method == "shutdown":

@@ -215,7 +215,7 @@ The process environment keeps `PATH`, `HOME`, `USER`, `LOGNAME`, `LANG`, `LC_ALL
 
 ### watch
 
-Params: `{"since":"<RFC3339>"}` or `{}` before the first success. `since` is the previous successful run.
+Params: `{"since":"<RFC3339>"}` or `{}` before the first successful mail read. For a declarative plugin that listens for `email.received`, `since` is that mail cursor. A run with no mailbox, or a run that errors, does not move it. Other plugins receive the previous run.
 
 ```json
 {"observations": [{"id": "n1", "at": "2026-11-01T18:00:00Z", "summary": "A note appeared"}], "tile": {"title": "Notes", "status": "ok", "lines": [{"label": "Waiting", "value": "1"}]}}

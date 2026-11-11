@@ -168,7 +168,7 @@ da plugin new note-watch --type watcher
 
 ## `da plugin validate`
 
-Checks [schemas/plugin.schema.json](../schemas/plugin.schema.json), then the manifest rules. A TypeScript plugin with a `build` script is built first (`npm install` when `typescript` is missing, then `npm run build`) unless `dist/index.js` is already newer than `src`. Then it starts the process and calls `initialize`, `watch`, `propose`, `act`, `report`, and an unknown method. The API base in that run is a dummy address, so those methods must return a valid result when the host cannot be reached.
+Checks [schemas/plugin.schema.json](../schemas/plugin.schema.json), then the manifest rules. A TypeScript plugin with a `build` script is built first (`npm install` when `typescript` is missing, then `npm run build`) unless `dist/index.js` is already newer than `src`. Then it starts the process and calls `initialize`, `watch`, `propose`, `act`, `report`, and an unknown method. Those calls see a small in-process stub of the plugin API, so a plugin can read mail status, state, and cards during validation. The stub does not send and it does not open a real mailbox. A repo copy that imports `vendor/plugin-sdk` without that folder is staged under the data directory with the SDK filled in.
 
 ```bash
 da plugin validate ./note-watch

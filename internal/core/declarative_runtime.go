@@ -68,7 +68,7 @@ func declarativeHandler(eng *declarative.Engine) pluginhost.LocalFunc {
 			if out.Observations == nil {
 				out.Observations = []model.Observation{}
 			}
-			return pluginhost.WatchResult{Observations: out.Observations, Tile: out.Tile}, nil
+			return pluginhost.WatchResult{Observations: out.Observations, Tile: out.Tile, MailRead: out.MailRead}, nil
 		case pluginhost.MethodPropose:
 			out := eng.Propose()
 			if out.Cards == nil {

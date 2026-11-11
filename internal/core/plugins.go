@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/vicgupta/dap/internal/ledger"
@@ -115,13 +116,18 @@ func (a *App) install(dir string, approve bool, given map[string]any) (InstallRe
 	})
 	res.Status = "installed"
 	res.Message = "Installed " + m.Name + "."
-	if a.isUp() {
-		a.mutex(m.Name).Lock()
-		err := a.startOne(m.Name)
-		a.mutex(m.Name).Unlock()
-		if err != nil {
-			res.Message = "Installed " + m.Name + ", but it did not start: " + err.Error()
-		}
+	if err := a.ensureAPI(); err != nil {
+		res.Message = "Installed " + m.Name + ", but it did not start: " + err.Error()
+		return res, nil
+	}
+	a.mutex(m.Name).Lock()
+	startErr := a.startOne(m.Name)
+	if startErr == nil {
+		a.runIfNew(m.Name)
+	}
+	a.mutex(m.Name).Unlock()
+	if startErr != nil {
+		res.Message = "Installed " + m.Name + ", but it did not start: " + startErr.Error()
 	}
 	return res, nil
 }
@@ -136,12 +142,30 @@ func (a *App) Remove(name string) error {
 		declarativePlugin = true
 	}
 	a.host.Stop(name)
+	now := a.now().UTC()
+	type dropped struct {
+		id, title string
+	}
+	var droppedCards []dropped
 	if err := a.store.Update(func(st *store.State) error {
 		if st.Plugins[name] == nil {
 			return fmt.Errorf("%w: plugin %s", ErrNotFound, name)
 		}
 		delete(st.Plugins, name)
 		delete(st.PluginState, name)
+		for i := range st.Cards {
+			c := &st.Cards[i]
+			if c.Plugin != name {
+				continue
+			}
+			if c.Status != model.StatusPending && c.Status != model.StatusSnoozed {
+				continue
+			}
+			c.Status = model.StatusDismissed
+			c.Reason = "Dismissed because the plugin was removed."
+			c.UpdatedAt = now
+			droppedCards = append(droppedCards, dropped{id: c.ID, title: c.Title})
+		}
 		return nil
 	}); err != nil {
 		return err
@@ -154,8 +178,32 @@ func (a *App) Remove(name string) error {
 		// the core created for this plugin. Plugin state was deleted above.
 		_ = os.RemoveAll(filepath.Join(a.DataDir, "plugin-data", name))
 	}
+	a.removeDraft(name)
+	for _, c := range droppedCards {
+		title := c.title
+		if title == "" {
+			title = c.id
+		}
+		a.log(ledger.Entry{
+			Plugin:  name,
+			Kind:    ledger.KindDismissed,
+			CardID:  c.id,
+			Message: "Dismissed “" + title + "” because the plugin was removed.",
+		})
+	}
 	a.log(ledger.Entry{Plugin: name, Kind: ledger.KindRemove, Message: "Removed " + name})
 	return nil
+}
+
+// removeDraft deletes .dap/drafts/<name> so a later create can use that name.
+// A plugin installed from another directory is left where it is.
+func (a *App) removeDraft(name string) {
+	drafts := filepath.Clean(filepath.Join(a.DataDir, "drafts"))
+	target := filepath.Clean(filepath.Join(drafts, name))
+	if target == drafts || !strings.HasPrefix(target, drafts+string(filepath.Separator)) {
+		return
+	}
+	_ = os.RemoveAll(target)
 }
 
 // ApproveManifest accepts the plugin's current permission list and starts it.
@@ -186,7 +234,11 @@ func (a *App) ApproveManifest(name string) error {
 	if !a.isUp() {
 		return nil
 	}
-	return a.startOne(name)
+	if err := a.startOne(name); err != nil {
+		return err
+	}
+	a.runIfNew(name)
+	return nil
 }
 
 // StartPlugins loads manifests, starts dependencies first, and serves the plugin API.
@@ -248,10 +300,11 @@ func (a *App) StartPlugins() error {
 		}
 		a.mutex(name).Lock()
 		err := a.startOne(name)
-		a.mutex(name).Unlock()
 		if err == nil {
 			started[name] = true
+			a.runIfNew(name)
 		}
+		a.mutex(name).Unlock()
 	}
 	a.mu.Lock()
 	a.pluginsUp = true

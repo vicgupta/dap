@@ -116,6 +116,70 @@ output:
 	}
 }
 
+func TestEmptyReportPostsNoCard(t *testing.T) {
+	raw := []byte(`
+apiVersion: dap/v1
+kind: declarative
+name: quiet-report
+version: 0.1.0
+min_dap_version: 0.1.0
+triggers:
+  - event: email.received
+inputs:
+  - service: email
+    window: 7d
+rules:
+  - id: never
+    when:
+      all:
+        - subject_contains: zzz-no-such-subject
+output:
+  report:
+    title: Quiet
+`)
+	p, err := Compile(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 11, 5, 15, 0, 0, 0, time.UTC)
+	eng := New(p, map[string]any{})
+	eng.Now = func() time.Time { return now }
+	eng.Mail = &recordMail{threads: mail.Seed(now)}
+	out, err := eng.Watch(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !out.MailRead {
+		t.Fatal("a full read should move the mail cursor")
+	}
+	if len(out.Cards) != 0 {
+		t.Fatalf("nothing matched and a card was posted: %+v", titles(out))
+	}
+	if len(out.Tile.Lines) != 1 || out.Tile.Lines[0].Value != "0" {
+		t.Fatalf("tile %+v", out.Tile)
+	}
+	future := now.Add(time.Hour)
+	hidden, err := eng.Watch(context.Background(), &future)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hidden.Cards) != 0 || !hidden.MailRead {
+		t.Fatalf("cards %+v read %v", titles(hidden), hidden.MailRead)
+	}
+
+	eng.Mail = nil
+	dry, err := eng.Watch(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dry.MailRead || len(dry.Cards) != 0 || dry.Note == "" {
+		t.Fatalf("read %v note %q cards %+v", dry.MailRead, dry.Note, titles(dry))
+	}
+	if len(dry.Tile.Lines) != 1 || dry.Tile.Lines[0].Value != dry.Note {
+		t.Fatalf("tile %+v", dry.Tile)
+	}
+}
+
 func TestChecklistSample(t *testing.T) {
 	p := mustCompile(t, "templates/scheduled-checklist/plugin.yaml")
 	out, text, err := Sample(p, nil, time.Now(), nil)

@@ -162,9 +162,16 @@ func (a *App) runLocked(name, trigger string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
+	// LastRun moves on every attempt, including a run with no mailbox and a
+	// run that errors. Declarative email.received plugins filter on the last
+	// successful mail read instead, so existing mail is not hidden.
+	since := rec.Run.LastRun
+	if rec.Manifest.Runtime == "declarative" {
+		since = rec.Run.MailChecked
+	}
 	var watch pluginhost.WatchResult
-	if err := a.host.Call(ctx, name, pluginhost.MethodWatch, pluginhost.WatchParams{Since: rec.Run.LastRun}, &watch); err != nil {
-		a.noteRun(name, trigger, "error", err)
+	if err := a.host.Call(ctx, name, pluginhost.MethodWatch, pluginhost.WatchParams{Since: since}, &watch); err != nil {
+		a.noteRun(name, trigger, "error", err, false)
 		a.log(ledger.Entry{Plugin: name, Kind: ledger.KindRun, Message: "Run failed during watch: " + err.Error()})
 		return err
 	}
@@ -179,7 +186,7 @@ func (a *App) runLocked(name, trigger string) error {
 	}
 	var proposed pluginhost.ProposeResult
 	if err := a.host.Call(ctx, name, pluginhost.MethodPropose, pluginhost.ProposeParams{Observations: watch.Observations}, &proposed); err != nil {
-		a.noteRun(name, trigger, "error", err)
+		a.noteRun(name, trigger, "error", err, false)
 		a.log(ledger.Entry{Plugin: name, Kind: ledger.KindRun, Message: "Run failed during propose: " + err.Error()})
 		return err
 	}
@@ -209,19 +216,21 @@ func (a *App) runLocked(name, trigger string) error {
 	if firstErr != nil {
 		status = "error"
 	}
-	a.noteRun(name, trigger, status, firstErr)
+	a.noteRun(name, trigger, status, firstErr, watch.MailRead)
 	msg := "Ran " + name
 	switch trigger {
 	case "catchup":
 		msg = "Caught up " + name + " once"
 	case "manual":
 		msg = "Ran " + name + " now"
+	case "install":
+		msg = "Ran " + name + " after install"
 	}
 	a.log(ledger.Entry{Plugin: name, Kind: ledger.KindRun, Message: msg})
 	return firstErr
 }
 
-func (a *App) noteRun(name, trigger, status string, runErr error) {
+func (a *App) noteRun(name, trigger, status string, runErr error, mailRead bool) {
 	now := a.now().UTC()
 	_ = a.store.Update(func(st *store.State) error {
 		p := st.Plugins[name]
@@ -242,8 +251,24 @@ func (a *App) noteRun(name, trigger, status string, runErr error) {
 			p.Run.MissedAt = nil
 			p.Run.MissedScheduled = nil
 		}
+		// Only a successful mail read moves the cursor forward.
+		if mailRead && status == "ok" && (p.Run.MailChecked == nil || now.After(*p.Run.MailChecked)) {
+			t := now
+			p.Run.MailChecked = &t
+		}
 		return nil
 	})
+}
+
+// runIfNew runs a plugin once when it has never run.
+// The caller holds the plugin lock.
+func (a *App) runIfNew(name string) {
+	snap := a.store.Snapshot()
+	rec := snap.Plugins[name]
+	if rec == nil || rec.Run.LastRun != nil {
+		return
+	}
+	_ = a.runLocked(name, "install")
 }
 
 // Propose enqueues a card. It does not call the plugin.
