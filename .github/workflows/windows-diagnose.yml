@@ -24,7 +24,29 @@ jobs:
           Write-Host "---- install.ps1 ----"
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
           Write-Host "EXIT $LASTEXITCODE"
-          Get-ChildItem -Force | Format-Table Name, Length
+          Get-ChildItem -Force -Recurse | Format-Table FullName, Length
+          Write-Host "---- da.exe --version ----"
+          & .\da.exe --version
+          Write-Host "version EXIT $LASTEXITCODE"
+          Write-Host "---- da.exe run --no-browser ----"
+          $p = Start-Process -FilePath .\da.exe -ArgumentList @("run","--no-browser") -PassThru -NoNewWindow -RedirectStandardOutput .\run.out -RedirectStandardError .\run.err
+          $ok = $false
+          foreach ($i in 1..20) {
+            Start-Sleep -Milliseconds 500
+            try {
+              $r = Invoke-WebRequest -Uri "http://127.0.0.1:7391/" -UseBasicParsing
+              Write-Host "HTTP $($r.StatusCode)"
+              $ok = $true
+              break
+            } catch {
+              Write-Host "wait $i $($_.Exception.Message)"
+            }
+            if ($p.HasExited) { Write-Host "process exited $($p.ExitCode)"; break }
+          }
+          if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+          Write-Host "---- stdout ----"; Get-Content .\run.out -ErrorAction SilentlyContinue
+          Write-Host "---- stderr ----"; Get-Content .\run.err -ErrorAction SilentlyContinue
+          if (-not $ok) { exit 1 }
 
       - name: Isolate download and Expand-Archive
         shell: powershell
