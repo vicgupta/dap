@@ -104,7 +104,7 @@ try {
 }
 Assert-Clean $dir
 
-$ver = & (Join-Path $dir "da.exe") --version
+$ver = (& (Join-Path $dir "da.exe") --version | Out-String)
 Write-Host $ver
 if ($ver -notmatch "0\.0\.0-ci") { throw "version stamp missing: $ver" }
 
