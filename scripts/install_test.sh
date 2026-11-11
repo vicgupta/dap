@@ -356,3 +356,23 @@ fi
 echo "ok  unsupported cpu"
 
 echo "ok  install.sh"
+
+ps1="$root/scripts/install.ps1"
+hits=$(grep -nE 'GetTempPath|\$env:TEMP|\$env:TMP|LOCALAPPDATA|ProgramFiles|HKLM' "$ps1" | grep -vE '^[0-9]+:#' || true)
+if [ -n "$hits" ]; then
+  echo "$hits" >&2
+  fail "install.ps1 uses a privileged path or the system temp directory"
+fi
+if grep -nE '(^|[[:space:]])gh[[:space:]]' "$ps1" >/dev/null; then
+  fail "install.ps1 must not call the gh CLI"
+fi
+if ! grep -F 'Run: .\da.exe run' "$ps1" >/dev/null; then
+  fail "install.ps1 must print Run: .\\da.exe run"
+fi
+if ! grep -q 'da_windows_' "$ps1"; then
+  fail "install.ps1 must download da_windows_<arch>.zip"
+fi
+if ! grep -q 'https://api.github.com/repos/$Repo/releases?per_page=1' "$ps1"; then
+  fail "install.ps1 must use the public releases API"
+fi
+echo "ok  install.ps1"

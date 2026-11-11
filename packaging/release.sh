@@ -84,7 +84,7 @@ powershell -ExecutionPolicy Bypass -Scope Process -File .\\install.ps1
 
 The installers check SHA256 and copy \`da\` or \`da.exe\` into the current directory. They do not change PATH and do not need sudo or an administrator prompt. Data stays in ./.dap in that folder. A relative \$DAP_HOME is resolved from the folder.
 
-This release is the CLI only: darwin tarballs, linux amd64 and arm64 tarballs, windows zips, \`checksums.txt\`, \`install.sh\`, and \`install.ps1\`. Each archive contains only \`da\` (\`da.exe\` on Windows).
+This release is the CLI only: darwin tarballs, linux amd64 and arm64 tarballs, \`da_windows_amd64.zip\` and \`da_windows_arm64.zip\`, \`checksums.txt\`, \`install.sh\`, and \`install.ps1\`. Each archive contains only \`da\` (\`da.exe\` on Windows).
 
 macOS Gatekeeper: \`install.sh\` clears the quarantine flag on \`da\`.
 

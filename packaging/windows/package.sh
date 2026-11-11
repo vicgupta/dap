@@ -33,7 +33,10 @@ cli_zip() {
   local tmp
   tmp=$(mktemp -d)
   cp "$bin" "$tmp/da.exe"
-  (cd "$tmp" && zip -X "$out/da-${version}-windows-${arch}.zip" da.exe)
+  # Stable name is what install.ps1 downloads. The versioned copy is the
+  # same zip, kept so an older install.ps1 can still find da-<version>-windows-*.zip.
+  (cd "$tmp" && zip -X "$out/da_windows_${arch}.zip" da.exe)
+  cp "$out/da_windows_${arch}.zip" "$out/da-${version}-windows-${arch}.zip"
   rm -rf "$tmp"
 }
 

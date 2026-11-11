@@ -22,6 +22,8 @@ touch \
   "$out/da-0.1.0-test-darwin-universal.tar.gz" \
   "$out/da-0.1.0-test-linux-amd64.tar.gz" \
   "$out/da-0.1.0-test-linux-arm64.tar.gz" \
+  "$out/da_windows_amd64.zip" \
+  "$out/da_windows_arm64.zip" \
   "$out/da-0.1.0-test-windows-amd64.zip" \
   "$out/da-0.1.0-test-windows-arm64.zip" \
   "$out/install.sh" \
@@ -55,6 +57,8 @@ for kept in \
   da-0.1.0-test-darwin-universal.tar.gz \
   da-0.1.0-test-linux-amd64.tar.gz \
   da-0.1.0-test-linux-arm64.tar.gz \
+  da_windows_amd64.zip \
+  da_windows_arm64.zip \
   da-0.1.0-test-windows-amd64.zip \
   da-0.1.0-test-windows-arm64.zip \
   install.sh \
@@ -77,6 +81,8 @@ expected=$(printf '%s\n' \
   da-0.1.0-test-darwin-universal.tar.gz \
   da-0.1.0-test-linux-amd64.tar.gz \
   da-0.1.0-test-linux-arm64.tar.gz \
+  da_windows_amd64.zip \
+  da_windows_arm64.zip \
   da-0.1.0-test-windows-amd64.zip \
   da-0.1.0-test-windows-arm64.zip \
   install.ps1 \

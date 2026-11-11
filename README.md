@@ -20,6 +20,8 @@ powershell -ExecutionPolicy Bypass -Scope Process -File .\install.ps1
 .\da.exe run
 ```
 
+Or download `da_windows_amd64.zip` (ARM: `da_windows_arm64.zip`) from the [latest release](https://github.com/vicgupta/dap/releases), choose Extract All, and run `da.exe`. The zip contains only that exe. No installer and no admin rights.
+
 The exe is unsigned. If SmartScreen appears, click More info, then Run anyway. No admin is needed.
 
 # DAP
