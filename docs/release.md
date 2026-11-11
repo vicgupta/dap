@@ -85,8 +85,10 @@ v0.1.0-alpha.4 is the installer fallback when the GitHub releases API does not a
 | `da-<version>-darwin-universal.tar.gz` | Fat `da` |
 | `da-<version>-linux-amd64.tar.gz` | Linux x86_64 `da` |
 | `da-<version>-linux-arm64.tar.gz` | Linux arm64 `da` |
-| `da-<version>-windows-amd64.zip` | `da.exe` only |
-| `da-<version>-windows-arm64.zip` | `da.exe` only |
+| `da_windows_amd64.zip` | `da.exe` only, stable name |
+| `da_windows_arm64.zip` | `da.exe` only, stable name |
+| `da-<version>-windows-amd64.zip` | same zip, versioned name |
+| `da-<version>-windows-arm64.zip` | same zip, versioned name |
 | `checksums.txt` | SHA256 |
 | `install.sh` | macOS and Linux CLI, into the current directory |
 | `install.ps1` | Windows CLI, into the current directory |
@@ -113,7 +115,9 @@ powershell -ExecutionPolicy Bypass -Scope Process -File .\install.ps1
 .\da.exe run
 ```
 
-The script copies `da.exe` into the current directory (a normal user folder; not Program Files), runs `Unblock-File` on that copy, and does not change the user or system `PATH`. It does not write HKLM, install a service, or ask for elevation. Data stays in `.\.dap` in that folder, or in a relative `%DAP_HOME%`.
+`install.ps1` picks amd64 or arm64, downloads `da_windows_amd64.zip` or `da_windows_arm64.zip` from the newest public release, checks SHA256, and expands that zip so `.\da.exe` is in the current folder. Temp files stay in that folder and are removed. It does not change PATH, write HKLM, or ask for elevation. Data stays in `.\.dap` when you run `da.exe`.
+
+To install without the script, download `da_windows_amd64.zip` or `da_windows_arm64.zip` from the [releases page](https://github.com/vicgupta/dap/releases), choose Extract All, and run `da.exe`. `/releases/latest` skips pre-releases, so use the newest release in that list. The zip contains only `da.exe`.
 
 ### SmartScreen
 
@@ -127,7 +131,7 @@ In PowerShell, from the folder that contains the exe:
 Unblock-File .\da.exe
 ```
 
-`install.ps1` already unblocks the copy it writes. A browser download can still mark the zip with a Mark-of-the-Web (`Zone.Identifier`). SmartScreen can show **Windows protected your PC** the first time an unsigned exe runs. **More info**, then **Run anyway**, does not grant administrator rights. DAP opens the default browser. Chrome and Edge are not required.
+`install.ps1` unblocks the downloaded zip before `Expand-Archive`, then unblocks `da.exe`. A browser download can still mark the zip with a Mark-of-the-Web (`Zone.Identifier`). SmartScreen can show **Windows protected your PC** the first time an unsigned exe runs. **More info**, then **Run anyway**, does not grant administrator rights. DAP opens the default browser. Chrome and Edge are not required.
 
 ## After install
 
@@ -163,7 +167,7 @@ The workflow cross-compiles on `ubuntu-latest` and uploads CLI binaries only:
 
 - macOS arm64, amd64, and a universal `da` tarball (`lipo`), ad-hoc signed with `rcodesign` (signature flag `ADHOC`, same outcome as `codesign -s -`)
 - Linux amd64 and arm64 `da` tarballs (`CGO_ENABLED=0`), each containing only `da`
-- Windows amd64 and arm64 zips that contain only `da.exe`
+- Windows amd64 and arm64 zips that contain only `da.exe` (`da_windows_amd64.zip` and `da_windows_arm64.zip`, plus the same bytes under `da-<version>-windows-*.zip`)
 
 Tags that contain `-alpha`, `-beta`, or `-rc` are marked pre-release. Nothing is notarized. `DAP.app`, `.deb` packages, and launcher or plugins bundles are not uploaded.
 

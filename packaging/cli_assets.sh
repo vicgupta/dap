@@ -4,6 +4,7 @@
 #
 #   da-<version>-darwin-{arm64,amd64,universal}.tar.gz
 #   da-<version>-linux-{amd64,arm64}.tar.gz
+#   da_windows_{amd64,arm64}.zip
 #   da-<version>-windows-{amd64,arm64}.zip
 #   checksums.txt
 #   install.sh
@@ -11,7 +12,7 @@
 
 cli_release_keep() {
   case "$1" in
-    da-*-darwin-*.tar.gz|da-*-linux-*.tar.gz|da-*-windows-*.zip|install.sh|install.ps1|checksums.txt)
+    da-*-darwin-*.tar.gz|da-*-linux-*.tar.gz|da_windows_*.zip|da-*-windows-*.zip|install.sh|install.ps1|checksums.txt)
       return 0
       ;;
   esac
@@ -61,6 +62,8 @@ cli_release_require() {
     'da-*-darwin-universal.tar.gz'
     'da-*-linux-amd64.tar.gz'
     'da-*-linux-arm64.tar.gz'
+    'da_windows_amd64.zip'
+    'da_windows_arm64.zip'
     'da-*-windows-amd64.zip'
     'da-*-windows-arm64.zip'
     'install.sh'
@@ -93,6 +96,7 @@ cli_release_list() {
   for pattern in \
     'da-*-darwin-*.tar.gz' \
     'da-*-linux-*.tar.gz' \
+    'da_windows_*.zip' \
     'da-*-windows-*.zip' \
     'checksums.txt' \
     'install.sh' \

@@ -5,48 +5,40 @@ package lockfile
 import (
 	"fmt"
 	"os"
-	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
 
 // Lock is an exclusive non-blocking lock on a file.
 type Lock struct {
-	f *os.File
+	f  *os.File
+	ol windows.Overlapped
 }
 
-var (
-	kernel32     = windows.NewLazySystemDLL("kernel32.dll")
-	procLockFile = kernel32.NewProc("LockFileEx")
-	procUnlock   = kernel32.NewProc("UnlockFileEx")
-)
-
-const (
-	lockfileExclusiveLock   = 0x0002
-	lockfileFailImmediately = 0x0001
-)
-
 // Acquire takes an exclusive lock, creating the file if needed.
+//
+// LockFileEx requires a live OVERLAPPED pointer. Passing NULL makes the
+// kernel read address 0x10 and the process dies with 0xc0000005 before
+// `da run` can listen. The struct stays on Lock so it outlives the call.
 func Acquire(path string) (*Lock, error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, err
 	}
-	var ol windows.Overlapped
-	r, _, callErr := procLockFile.Call(
-		f.Fd(),
-		uintptr(lockfileExclusiveLock|lockfileFailImmediately),
-		0,
+	l := &Lock{f: f}
+	err = windows.LockFileEx(
+		windows.Handle(f.Fd()),
+		windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY,
 		0,
 		1,
 		0,
-		uintptr(unsafe.Pointer(&ol)),
+		&l.ol,
 	)
-	if r == 0 {
+	if err != nil {
 		_ = f.Close()
-		return nil, fmt.Errorf("data directory is in use: %w", callErr)
+		return nil, fmt.Errorf("data directory is in use: %w", err)
 	}
-	return &Lock{f: f}, nil
+	return l, nil
 }
 
 // Release unlocks and closes the file.
@@ -54,8 +46,7 @@ func (l *Lock) Release() error {
 	if l == nil || l.f == nil {
 		return nil
 	}
-	var ol windows.Overlapped
-	_, _, _ = procUnlock.Call(l.f.Fd(), 0, 0, 1, 0, uintptr(unsafe.Pointer(&ol)))
+	_ = windows.UnlockFileEx(windows.Handle(l.f.Fd()), 0, 1, 0, &l.ol)
 	err := l.f.Close()
 	l.f = nil
 	return err
